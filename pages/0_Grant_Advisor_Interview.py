@@ -53,11 +53,13 @@ except Exception:
         get_demo_responses_dict,
         load_demo_responses_json,
     )
+    from advisor.pipeline.progress import STAGES  # type: ignore
     from advisor.ui_progress import (  # type: ignore
         render_live_progress_tracker,
         render_minimal_progress,
         cleanup_progress_state,
     )
+    from advisor.pipeline.progress import STAGES  # type: ignore
 
 
 st.set_page_config(page_title="GrantScope — Grant Advisor Interview", page_icon=":memo:")
@@ -155,6 +157,39 @@ def _get_report_id(interview_data: Dict[str, Any], df: pd.DataFrame) -> str:
         # Fallback to timestamp if imports fail
         import time
         return f"RPT-{int(time.time())}"
+
+
+def _run_pipeline_with_progress(interview: InterviewInput, df: pd.DataFrame, report_id: str, progress_placeholder) -> Optional[Any]:
+    """Run the pipeline with real-time progress updates."""
+    try:
+        # Initialize progress state
+        progress_key = f"advisor_progress_{report_id}"
+        st.session_state[progress_key] = {"current_stage": -1, "status": "pending"}
+        
+        # Show initial progress
+        with progress_placeholder:
+            render_live_progress_tracker(report_id, show_estimates=True)
+        
+        # Run pipeline with progress callback
+        report = run_interview_pipeline(interview, df)
+        
+        # Mark final stage as complete
+        if progress_key in st.session_state:
+            st.session_state[progress_key].update({
+                "current_stage": len(STAGES) - 1,
+                "status": "completed"
+            })
+        
+        return report
+        
+    except Exception as e:
+        # Mark as error
+        progress_key = f"advisor_progress_{report_id}"
+        if progress_key in st.session_state:
+            st.session_state[progress_key]["status"] = "error"
+        raise e
+
+
 
 
 def render_interview_page() -> None:
@@ -316,11 +351,8 @@ def render_interview_page() -> None:
             progress_placeholder = st.empty()
             
             try:
-                # Show live progress tracker
-                with progress_placeholder:
-                    render_live_progress_tracker(report_id, show_estimates=True)
-                
-                report = run_interview_pipeline(interview, df_nonnull2)
+                # Run pipeline with progress tracking
+                report = _run_pipeline_with_progress(interview, df_nonnull2, report_id, progress_placeholder)
                 
                 # Clear progress tracker and show completion
                 progress_placeholder.empty()

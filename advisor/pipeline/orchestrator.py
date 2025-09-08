@@ -16,8 +16,7 @@ from .convert import _safe_to_dict
 from .metrics import _ensure_funder_metric, _collect_datapoints
 from .funders import _coerce_funder_candidate, _fallback_funder_candidates, _derive_grounded_dp_ids
 from .figures_wrap import _figures_default
-from .progress import _push_progress, _persist_report
-from ..ui_progress import create_progress_callback
+from .progress import _push_progress, _persist_report, create_progress_callback
 
 def run_interview_pipeline(interview: InterviewInput, df: pd.DataFrame) -> ReportBundle:
     """Run the staged advisor pipeline and return a ReportBundle."""
