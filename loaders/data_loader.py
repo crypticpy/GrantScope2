@@ -1,6 +1,7 @@
 # sourcery skip: all
 import io
 import json
+import os
 from dataclasses import dataclass, asdict, fields
 from typing import List, Tuple
 
@@ -59,12 +60,18 @@ class Grants:
 
 @st.cache_data
 def load_data(file_path=None, uploaded_file=None):
-
     if uploaded_file is not None:
         data = json.load(io.BytesIO(uploaded_file.read()))
     elif file_path is not None:
-        with open(file_path, 'r', encoding='utf-8') as file:
-            data = json.load(file)
+        # Try provided path first; if not found, resolve relative to package root (GrantScope/)
+        try:
+            with open(file_path, 'r', encoding='utf-8') as file:
+                data = json.load(file)
+        except FileNotFoundError:
+            pkg_root = os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
+            alt_path = os.path.normpath(os.path.join(pkg_root, str(file_path)))
+            with open(alt_path, 'r', encoding='utf-8') as file:
+                data = json.load(file)
     else:
         raise ValueError("Either file_path or uploaded_file must be provided.")
 

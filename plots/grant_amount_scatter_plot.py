@@ -4,6 +4,7 @@ import streamlit as st
 
 from utils.chat_panel import chat_panel
 from utils.utils import download_csv, generate_page_prompt
+from utils.app_state import set_selected_chart
 
 
 def grant_amount_scatter_plot(df, grouped_df, selected_chart, selected_role, ai_enabled):
@@ -13,7 +14,7 @@ def grant_amount_scatter_plot(df, grouped_df, selected_chart, selected_role, ai_
     st.header("Grant Amount Scatter Plot")
     st.write(
         """
-        Welcome to the Grant Amount Scatter Plot page! This AI interactive visualization allows you to explore the distribution of grant amounts over time with support from GPT-4.
+        Welcome to the Grant Amount Scatter Plot page! This AI interactive visualization allows you to explore the distribution of grant amounts over time with support from GPT-5.
 
         This visualization makes it easy to spot trends and patterns in grant amounts across different USD clusters.
 
@@ -40,7 +41,7 @@ def grant_amount_scatter_plot(df, grouped_df, selected_chart, selected_role, ai_
     grouped_df = grouped_df.copy()
     grouped_df["amount_usd"] = pd.to_numeric(grouped_df["amount_usd"], errors="coerce").fillna(0)
     grouped_df["year_issued"] = pd.to_numeric(grouped_df["year_issued"], errors="coerce").fillna(0).astype(int)
-    grouped_df["amount_usd_cluster"] = grouped_df["amount_usd_cluster"].fillna("").astype(str)
+    grouped_df["amount_usd_cluster"] = grouped_df["amount_usd_cluster"].astype("string").fillna("")
 
     unique_years = sorted(grouped_df['year_issued'].unique())
     if len(unique_years) == 1:
@@ -119,14 +120,39 @@ def grant_amount_scatter_plot(df, grouped_df, selected_chart, selected_role, ai_
     if log_y:
         fig.update_yaxes(type='log')
     st.plotly_chart(fig, use_container_width=True)
+    # Persist current scatter filter state for AI chart-state tool
+    try:
+        st.session_state["scatter_start_year"] = int(start_year)
+        st.session_state["scatter_end_year"] = int(end_year)
+        st.session_state["scatter_clusters"] = list(map(str, selected_clusters))
+        st.session_state["scatter_marker_size"] = int(marker_size)
+        st.session_state["scatter_opacity"] = float(opacity)
+        st.session_state["scatter_log_y"] = bool(log_y)
+    except Exception:
+        pass
 
     if ai_enabled:
+        # Sidebar chat selector (single option on this page)
+        st.sidebar.subheader("Chat")
+        _ = st.sidebar.selectbox(
+            "Chat about",
+            options=["Scatter Chart"],
+            index=0,
+            key="scatter_chat_target",
+        )
+        # Single selector per page: set chart id for downstream chat context
+        set_selected_chart("scatter.main")
         additional_context = (
             f"the distribution of grant amounts over time, filtered by USD clusters ({', '.join(map(str, selected_clusters))}) "
             f"and year range ({start_year} to {end_year})"
         )
         pre_prompt = generate_page_prompt(df, grouped_df, selected_chart, selected_role, additional_context)
-        chat_panel(filtered_df, pre_prompt, state_key="scatter_chat", title="Scatter — AI Assistant")
+        # Render chat in a right-side column to keep main content centered
+        col_main, col_chat = st.columns([8, 3], gap="large")
+        with col_main:
+            st.empty()
+        with col_chat:
+            chat_panel(filtered_df, pre_prompt, state_key="scatter_chat", title="Scatter — AI Assistant")
     else:
         st.info("AI-assisted analysis is disabled. Please provide an API key to enable this feature.")
 

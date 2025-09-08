@@ -4,6 +4,7 @@ import streamlit as st
 
 from utils.utils import generate_page_prompt
 from utils.chat_panel import chat_panel
+from utils.app_state import set_selected_chart
 
 
 def data_summary(df, grouped_df, selected_chart, selected_role, ai_enabled):
@@ -17,7 +18,7 @@ def data_summary(df, grouped_df, selected_chart, selected_role, ai_enabled):
         """
         Welcome to the GrantScope Tool! This powerful prototype application was built by [Christopher Collins](https://www.linkedin.com/in/cctopher/) to assist grant writers and analysts in navigating and extracting insights from a complex grant dataset. By leveraging the capabilities AI integrated with this tool, you can identify potential funding opportunities, analyze trends, and gain valuable information.
 
-        The application has select pages which have been enhanced with experimental features from Llama-Index's QueryPipeline for Pandas Dataframes, and OpenAI GPT-4 to provide you with additional insights and analysis. You can interact with the AI assistant to ask questions, generate summaries, and explore the data in a more intuitive manner.
+        The application has select pages which have been enhanced with experimental features from Llama-Index's QueryPipeline for Pandas Dataframes, and OpenAI GPT-5 to provide you with additional insights and analysis. You can interact with the AI assistant to ask questions, generate summaries, and explore the data in a more intuitive manner.
 
         The preloaded dataset encompasses a small sample of grant data, including details about funders, recipients, grant amounts, subject areas, populations served, and more. With this tool, you can explore the data through interactive visualizations, filter and search for specific grants, and download relevant data for further analysis.
         """
@@ -39,6 +40,11 @@ def data_summary(df, grouped_df, selected_chart, selected_role, ai_enabled):
     top_n = st.slider(
         "Select the number of top funders to display", min_value=5, max_value=20, value=10, step=1
     )
+    # Persist Top Funders slider for AI chart-state tool
+    try:
+        st.session_state["ds_top_n"] = int(top_n)
+    except Exception:
+        pass
     unique_df = df.drop_duplicates(subset="grant_key")
     top_funders = (
         unique_df.groupby("funder_name")["amount_usd"].sum().nlargest(top_n).reset_index()
@@ -53,18 +59,8 @@ def data_summary(df, grouped_df, selected_chart, selected_role, ai_enabled):
     fig.update_layout(xaxis_title="Funder Name", yaxis_title="Total Grant Amount (USD)")
     st.plotly_chart(fig)
 
-    if ai_enabled:
-        additional_context = f"the top {top_n} funders by total grant amount"
-        pre_prompt = generate_page_prompt(
-            df, grouped_df, selected_chart, selected_role, additional_context
-        )
-        chat_panel(
-            top_funders,
-            pre_prompt,
-            state_key="data_summary_top_funders",
-            title="Top Funders — AI Assistant",
-        )
-    else:
+    # Defer AI chat rendering; consolidated into a single chat panel with context selector below.
+    if not ai_enabled:
         st.info("AI-assisted analysis is disabled. Provide an API key to enable this feature.")
 
     if st.checkbox("Show Top Funders Data Table"):
@@ -132,15 +128,117 @@ def data_summary(df, grouped_df, selected_chart, selected_role, ai_enabled):
     st.plotly_chart(fig)
 
     if ai_enabled:
-        additional_context = (
-            "the overall grant dataset, including funders, recipients, grant amounts, subject areas, and populations served"
+        # Sidebar chat selector to keep the center content clean
+        st.sidebar.subheader("Chat")
+        chat_target = st.sidebar.selectbox(
+            "Chat about",
+            options=[
+                "Top Funders",
+                "Funder Type Distribution",
+                "Top Subject Areas",
+                "Top Populations",
+                "General Dataset",
+            ],
+            index=0,
+            key="ds_chat_target",
         )
-        pre_prompt = generate_page_prompt(
-            df, grouped_df, selected_chart, selected_role, additional_context
-        )
-        chat_panel(
-            df, pre_prompt, state_key="data_summary_general", title="General Dataset — AI Assistant"
-        )
+
+        if chat_target == "Top Funders":
+            set_selected_chart("data_summary.top_funders")
+            additional_context = f"the top {top_n} funders by total grant amount"
+            pre_prompt = generate_page_prompt(
+                df,
+                grouped_df,
+                selected_chart,
+                selected_role,
+                additional_context,
+                current_filters={"top_n": int(top_n)},
+                sample_df=top_funders,
+            )
+            chat_panel(
+                top_funders,
+                pre_prompt,
+                state_key="data_summary_top_funders",
+                title="Top Funders — AI Assistant",
+            )
+
+        elif chat_target == "Funder Type Distribution":
+            set_selected_chart("data_summary.funder_type")
+            additional_context = "the distribution of total grant amounts by funder type (with smaller categories possibly grouped into 'Other')"
+            pre_prompt = generate_page_prompt(
+                df,
+                grouped_df,
+                selected_chart,
+                selected_role,
+                additional_context,
+                current_filters=None,
+                sample_df=top_categories,
+            )
+            chat_panel(
+                top_categories,
+                pre_prompt,
+                state_key="data_summary_funder_type",
+                title="Funder Type — AI Assistant",
+            )
+
+        elif chat_target == "Top Subject Areas":
+            set_selected_chart("data_summary.subject_area")
+            additional_context = "the top 10 grant subject areas by total amount"
+            pre_prompt = generate_page_prompt(
+                df,
+                grouped_df,
+                selected_chart,
+                selected_role,
+                additional_context,
+                current_filters=None,
+                sample_df=subject_dist,
+            )
+            chat_panel(
+                subject_dist,
+                pre_prompt,
+                state_key="data_summary_subject",
+                title="Subject Areas — AI Assistant",
+            )
+
+        elif chat_target == "Top Populations":
+            set_selected_chart("data_summary.population")
+            additional_context = "the top 10 populations served by total grant amount"
+            pre_prompt = generate_page_prompt(
+                df,
+                grouped_df,
+                selected_chart,
+                selected_role,
+                additional_context,
+                current_filters=None,
+                sample_df=population_dist,
+            )
+            chat_panel(
+                population_dist,
+                pre_prompt,
+                state_key="data_summary_population",
+                title="Populations — AI Assistant",
+            )
+
+        else:
+            set_selected_chart("data_summary.general")
+            additional_context = (
+                "the overall grant dataset, including funders, recipients, grant amounts, subject areas, and populations served"
+            )
+            pre_prompt = generate_page_prompt(
+                df,
+                grouped_df,
+                selected_chart,
+                selected_role,
+                additional_context,
+                current_filters=None,
+                sample_df=df,
+            )
+            chat_panel(
+                df,
+                pre_prompt,
+                state_key="data_summary_general",
+                title="General Dataset — AI Assistant",
+            )
     else:
         st.info("AI-assisted analysis is disabled. Provide an API key to enable this feature.")
 
@@ -152,6 +250,6 @@ def data_summary(df, grouped_df, selected_chart, selected_role, ai_enabled):
 
         Happy exploring and best of luck with your grant related endeavors!
 
-        This app was produced by [Christopher Collins](https://www.linkedin.com/in/cctopher/) using the latest methods to enable AI conversation with Data. It also uses the Candid API, Streamlit, Plotly, and other open-source libraries. Generative AI solutions such as OpenAI GPT-4 and Claude Opus were used to generate portions of the source code.
+        This app was produced by [Christopher Collins](https://www.linkedin.com/in/cctopher/) using the latest methods to enable AI conversation with Data. It also uses the Candid API, Streamlit, Plotly, and other open-source libraries. Generative AI solutions such as OpenAI GPT-5 and Claude Opus were used to generate portions of the source code.
         """
     )

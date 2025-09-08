@@ -10,3 +10,6 @@ plotly-express
 python-dotenv
 llama-index-experimental
 openai
+duckdb
+pydantic>=1.10,<3
+# kaleido  # optional for static image export

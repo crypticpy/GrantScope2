@@ -4,6 +4,7 @@ import pandas as pd
 
 from utils.utils import download_excel, download_csv, generate_page_prompt
 from utils.chat_panel import chat_panel
+from utils.app_state import set_selected_chart
 
 
 def grant_amount_distribution(df, grouped_df, selected_chart, selected_role, ai_enabled):
@@ -55,6 +56,15 @@ def grant_amount_distribution(df, grouped_df, selected_chart, selected_role, ai_
         st.info("No cluster data available.")
         return
     selected_clusters = st.multiselect("Select USD Clusters", options=cluster_options, default=cluster_options)
+    # Persist current filter state to session for AI chart-state tool
+    try:
+        st.session_state["dist_metric"] = metric
+        st.session_state["dist_top_n"] = int(top_n)
+        st.session_state["dist_log_y"] = bool(log_y)
+        st.session_state["dist_sort_dir"] = sort_dir
+        st.session_state["dist_selected_clusters"] = list(selected_clusters)
+    except Exception:
+        pass
 
     # Work on a copy to avoid chained assignment issues
     grouped_df = grouped_df.copy()
@@ -104,9 +114,42 @@ def grant_amount_distribution(df, grouped_df, selected_chart, selected_role, ai_
     st.plotly_chart(fig, use_container_width=True)
 
     if ai_enabled:
+        # Sidebar chat selector (single option on this page)
+        st.sidebar.subheader("Chat")
+        _ = st.sidebar.selectbox(
+            "Chat about",
+            options=["Distribution Chart"],
+            index=0,
+            key="dist_chat_target",
+        )
+        # Single selector per page: set chart id for downstream chat context
+        set_selected_chart("distribution.main")
         additional_context = "the distribution of grant amounts across different USD clusters"
-        pre_prompt = generate_page_prompt(df, grouped_df, selected_chart, selected_role, additional_context)
-        chat_panel(filtered_df, pre_prompt, state_key="distribution_clusters", title="Distribution — AI Assistant")
+        current_filters = {
+            "metric": metric,
+            "top_n": int(top_n),
+            "log_y": bool(log_y),
+            "sort_dir": sort_dir,
+            "selected_clusters": list(selected_clusters),
+        }
+        pre_prompt = generate_page_prompt(
+            df,
+            grouped_df,
+            selected_chart,
+            selected_role,
+            additional_context,
+            current_filters=current_filters,
+            sample_df=filtered_df,
+        )
+        # Render chat in a right-side column to keep main content centered
+        col_main, col_chat = st.columns([8, 3], gap="large")
+        with col_chat:
+            chat_panel(
+                filtered_df,
+                pre_prompt,
+                state_key="distribution_clusters",
+                title="Distribution — AI Assistant",
+            )
     else:
         st.info("AI-assisted analysis is disabled. Provide an API key to enable this feature.")
 
@@ -120,5 +163,5 @@ def grant_amount_distribution(df, grouped_df, selected_chart, selected_role, ai_
             link = download_csv(filtered_df, "grants_distribution_filtered.csv")
             st.markdown(link, unsafe_allow_html=True)
 
-    st.markdown(""" This app was produced by [Christopher Collins](https://www.linkedin.com/in/cctopher/) using the latest methods for enabling AI to Chat with Data. It also uses the Candid API, Streamlit, Plotly, and other open-source libraries. Generative AI solutions such as OpenAI GPT-4 and Claude Opus were used to generate portions of the source code.
+    st.markdown(""" This app was produced by [Christopher Collins](https://www.linkedin.com/in/cctopher/) using the latest methods for enabling AI to Chat with Data. It also uses the Candid API, Streamlit, Plotly, and other open-source libraries. Generative AI solutions such as OpenAI GPT-5 and Claude Opus were used to generate portions of the source code.
                     """)

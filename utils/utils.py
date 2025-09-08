@@ -1,6 +1,9 @@
 import base64
 from io import BytesIO
 
+import os
+from typing import Any
+
 import pandas as pd
 import streamlit as st
 import json
@@ -24,56 +27,167 @@ def download_csv(df, filename):
     return href
 
 
-def generate_page_prompt(df, _grouped_df, selected_chart, selected_role, additional_context):
-    # Generate a list of available columns in the dataframes
-    columns = ', '.join(df.columns)
+def is_feature_enabled(name: str, default: bool = False) -> bool:
+    """Return True if the given env var is truthy ('1','true','yes','on')."""
+    val = str(os.getenv(name, "1" if default else "0")).strip().lower()
+    return val in ("1", "true", "yes", "on")
 
-    # Generate data type information
-    data_types = df.dtypes.apply(lambda x: x.name).to_dict()
-    data_type_info = ", ".join([f"{col}: {dtype}" for col, dtype in data_types.items()])
 
-    # Generate observations about the dataset
-    num_records = len(df)
-    num_funders = df['funder_name'].nunique()
-    num_recipients = df['recip_name'].nunique()
-    observations = f"The dataset contains {num_records} records, with {num_funders} unique funders and {num_recipients} unique recipients."
+def summarize_filters(filters: dict | None) -> str:
+    """Create a compact, stable summary string for a filters dict."""
+    if not filters:
+        return "None"
+    parts: list[str] = []
+    try:
+        for k, v in filters.items():
+            if isinstance(v, (list, tuple, set)):
+                v = list(v)
+            parts.append(f"{k}={v}")
+        return ", ".join(parts)
+    except Exception:
+        return str(filters)
 
-    # Generate date range information
-    min_date = df['last_updated'].min()
-    max_date = df['last_updated'].max()
+
+def compact_sample(df: pd.DataFrame, max_rows: int = 50) -> str:
+    """Return a compact CSV preview of the first N rows, truncated if large."""
+    try:
+        sample = df.head(max_rows)
+        csv = sample.to_csv(index=False)
+        if len(csv) > 4000:
+            csv = csv[:4000] + "\n# [truncated]"
+        return csv
+    except Exception:
+        return ""
+
+
+@st.cache_data(show_spinner=False)
+def _build_prompt_cached(
+    selected_chart: str,
+    selected_role: str,
+    additional_context: str,
+    columns: tuple[str, ...],
+    data_types_items: tuple[tuple[str, str], ...],
+    num_records: int,
+    num_funders: int,
+    num_recipients: int,
+    min_date: str,
+    max_date: str,
+    top_states: tuple[str, ...],
+    total_amount: float,
+    avg_amount: float,
+    median_amount: float,
+    filter_summary: str,
+    sample_text: str,
+) -> str:
+    columns_str = ", ".join(columns)
+    data_type_info = ", ".join([f"{col}: {dtype}" for col, dtype in data_types_items])
+    geographical_info = (
+        f"The dataset covers grants from {len(top_states)} states in the USA. "
+        f"The top states by grant count are {', '.join(top_states[:3])}."
+    )
+    observations = (
+        f"The dataset contains {num_records} records, with {num_funders} unique funders and "
+        f"{num_recipients} unique recipients."
+    )
     date_info = f"The dataset covers grants from {min_date} to {max_date}."
+    aggregated_stats = (
+        f"The total grant amount is ${total_amount:,.2f}, with an average grant amount of "
+        f"${avg_amount:,.2f} and a median grant amount of ${median_amount:,.2f}."
+    )
+    chart_description = (
+        f"The current chart is a {selected_chart}, which visualizes the grant data based on "
+        f"{additional_context}."
+    )
+    role_description = (
+        f"The user is a {selected_role} who is exploring the grant data to gain insights and "
+        f"inform their work."
+    )
+    guardrails = (
+        "Guardrails:\n"
+        "- Only answer questions using the dataset columns listed under 'Known Columns'.\n"
+        "- If a requested column is not listed, explicitly state that this information is not available in the dataset.\n"
+        "- Do not invent columns or values. Stay within the provided context.\n"
+        "- Respond in Markdown format only."
+    )
 
-    # Generate geographical coverage information
-    unique_states = df['funder_state'].unique().tolist()
-    geographical_info = f"The dataset covers grants from {len(unique_states)} states in the USA. The top states by grant count are {', '.join(df['funder_state'].value_counts().nlargest(3).index.tolist())}."
+    parts: list[str] = []
+    parts.append("The Candid API provides comprehensive data on grants and funding in the USA.")
+    parts.append(f"Known Columns: {columns_str}")
+    parts.append(f"Data types: {data_type_info}.")
+    parts.append(observations)
+    parts.append(date_info)
+    parts.append(geographical_info)
+    parts.append(aggregated_stats)
+    parts.append(chart_description)
+    parts.append(role_description)
+    parts.append(f"Current Filters: {filter_summary}")
+    if sample_text:
+        parts.append("Sample Context (CSV, head):\n```csv\n" + sample_text + "\n```")
+    parts.append(guardrails)
+    parts.append("The user's prompt is:")
+    return " ".join(parts)
 
-    # Generate aggregated statistics
-    total_amount = df['amount_usd'].sum()
-    avg_amount = df['amount_usd'].mean()
-    median_amount = df['amount_usd'].median()
-    aggregated_stats = f"The total grant amount is ${total_amount:,.2f}, with an average grant amount of ${avg_amount:,.2f} and a median grant amount of ${median_amount:,.2f}."
 
-    # Generate a description of the selected chart
-    chart_description = f"The current chart is a {selected_chart}, which visualizes the grant data based on {additional_context}."
+def generate_page_prompt(
+    df,
+    _grouped_df,
+    selected_chart,
+    selected_role,
+    additional_context,
+    current_filters: dict | None = None,
+    sample_df: pd.DataFrame | None = None,
+):
+    """Build a grounded, memoized prompt including known columns, filters, and a compact sample."""
+    # Extract primitives for caching
+    columns_tuple = tuple([str(c) for c in df.columns])
+    dtypes_items = tuple((str(col), str(dtype.name)) for col, dtype in df.dtypes.items())
+    num_records = int(len(df))
 
-    # Generate a description of the user's role
-    role_description = f"The user is a {selected_role} who is exploring the grant data to gain insights and inform their work."
+    # Defensive numeric computations
+    total_amount = float(df["amount_usd"].sum()) if "amount_usd" in df.columns else 0.0
+    avg_amount = float(df["amount_usd"].mean()) if "amount_usd" in df.columns else 0.0
+    median_amount = float(df["amount_usd"].median()) if "amount_usd" in df.columns else 0.0
 
-    # Compose the custom per page prompt
-    prompt = f"The Candid API provides comprehensive data on grants and funding in the USA. The current dataset contains the following columns: {columns}. "
-    prompt += f"You are an AI assistant helping a {selected_role} explore the grant data in the GRantScope application to gain insights and extract data useful to the gran application and writing process. "
-    prompt += f"Data types: {data_type_info}. "
-    prompt += observations + " "
-    prompt += date_info + " "
-    prompt += geographical_info + " "
-    prompt += aggregated_stats + " "
-    prompt += chart_description + " " + role_description
-    prompt += " The user can ask questions related to the current chart and the overall grant data to gain insights and explore the data further."
-    prompt += " Please note that the data is limited to the information provided in the dataset, queries beyond the available columns are not answerable."
-    prompt += " Respond in Markdown format only"
-    prompt += " The users prompt is:"
+    num_funders = int(df["funder_name"].nunique()) if "funder_name" in df.columns else 0
+    num_recipients = int(df["recip_name"].nunique()) if "recip_name" in df.columns else 0
 
-    return prompt
+    # Dates
+    if "last_updated" in df.columns:
+        min_date_val = df["last_updated"].min()
+        max_date_val = df["last_updated"].max()
+        min_date = str(min_date_val)
+        max_date = str(max_date_val)
+    else:
+        min_date = "N/A"
+        max_date = "N/A"
+
+    # States
+    if "funder_state" in df.columns:
+        top_states = tuple([str(s) for s in df["funder_state"].dropna().astype(str).unique().tolist()])
+    else:
+        top_states = tuple()
+
+    filter_summary = summarize_filters(current_filters)
+    sample_text = compact_sample(sample_df if sample_df is not None else df, 50)
+
+    return _build_prompt_cached(
+        str(selected_chart),
+        str(selected_role),
+        str(additional_context),
+        columns_tuple,
+        dtypes_items,
+        num_records,
+        num_funders,
+        num_recipients,
+        min_date,
+        max_date,
+        top_states,
+        total_amount,
+        avg_amount,
+        median_amount,
+        filter_summary,
+        sample_text,
+    )
 
 
 def download_multi_sheet_excel(sheets: dict, filename: str):

@@ -2,25 +2,126 @@ import requests
 import time
 import json
 import os
+from typing import Tuple, Sequence, Optional
 from tqdm import tqdm
 
-def get_grants_transactions(page_number, year_range, dollar_range, subjects, populations, locations, transaction_types):
+# Prefer centralized config for secrets (works when run via package or as script)
+try:
+    from GrantScope import config  # when executed via package context
+except Exception:
+    try:
+        import config  # fallback when executed inside GrantScope/ directly
+    except Exception:
+        config = None  # type: ignore
+
+def get_grants_transactions(
+    page_number,
+    year_range,
+    dollar_range,
+    subjects,
+    populations,
+    locations,
+    transaction_types,
+    retries: int = 3,
+    backoff: float = 1.5,
+    timeout: int = 30,
+):
+    """
+    Fetch a page of grants transactions from Candid API with basic backoff/validation.
+
+    Args:
+        page_number: 1-based page index to request.
+        year_range: tuple(start_year, end_year) inclusive.
+        dollar_range: tuple(min_amount, max_amount).
+        subjects, populations, locations, transaction_types: sequences of strings for filters.
+        retries: number of retry attempts for transient errors (e.g., 429).
+        backoff: base backoff seconds; multiplied exponentially per attempt.
+        timeout: HTTP request timeout in seconds.
+
+    Raises:
+        RuntimeError for missing/invalid API key or unrecoverable HTTP errors.
+        Exception for non-HTTP request issues after retries are exhausted.
+
+    Returns:
+        Parsed JSON dict from the API response.
+    """
     start_year, end_year = year_range
     min_amt, max_amt = dollar_range
 
-    url = f"https://api.candid.org/grants/v1/transactions?page={page_number}&location={','.join(locations)}&geo_id_type=geonameid&location_type=area_served&year={','.join(map(str, range(start_year, end_year + 1)))}&subject={','.join(subjects)}&population={','.join(populations)}&support=&transaction={','.join(transaction_types)}&recip_id=&funder_id=&include_gov=yes&min_amt={min_amt}&max_amt={max_amt}&sort_by=year_issued&sort_order=desc&format=json"
+    url = (
+        f"https://api.candid.org/grants/v1/transactions?"
+        f"page={page_number}"
+        f"&location={','.join(locations)}"
+        f"&geo_id_type=geonameid"
+        f"&location_type=area_served"
+        f"&year={','.join(map(str, range(start_year, end_year + 1)))}"
+        f"&subject={','.join(subjects)}"
+        f"&population={','.join(populations)}"
+        f"&support="
+        f"&transaction={','.join(transaction_types)}"
+        f"&recip_id=&funder_id=&include_gov=yes"
+        f"&min_amt={min_amt}&max_amt={max_amt}"
+        f"&sort_by=year_issued&sort_order=desc&format=json"
+    )
+
+    # Resolve API key with precedence via centralized config (st.secrets > env > .env)
+    candid_key: Optional[str] = None
+    if config is not None:
+        try:
+            candid_key = config.get_candid_key()
+        except Exception:
+            candid_key = None
+    # Fallback to environment if config is unavailable
+    if not candid_key:
+        candid_key = os.getenv("CANDID_API_KEY")
+
+    if not candid_key:
+        raise RuntimeError(
+            "Missing required configuration: CANDID_API_KEY. "
+            "Set st.secrets['CANDID_API_KEY'] (Streamlit) or environment variable CANDID_API_KEY."
+        )
 
     headers = {
         "accept": "application/json",
-        "Subscription-Key": "KEY"
+        "Subscription-Key": candid_key,
     }
 
-    try:
-        response = requests.get(url, headers=headers)
-        response.raise_for_status()
-        return response.json()
-    except requests.exceptions.RequestException as e:
-        raise Exception(f"Error getting grants transactions: {e}")
+    # Normalize retry count
+    retries = max(0, int(retries))
+    attempt = 0
+    while True:
+        try:
+            response = requests.get(url, headers=headers, timeout=timeout)
+
+            # Explicit handling for common failures
+            if response.status_code == 401:
+                raise RuntimeError(
+                    "Unauthorized (401) from Candid API. Verify that CANDID_API_KEY is valid."
+                )
+
+            if response.status_code == 429:
+                if attempt < retries:
+                    # Exponential backoff with jitter-free simple growth
+                    sleep_s = backoff * (2 ** attempt)
+                    time.sleep(sleep_s)
+                    attempt += 1
+                    continue
+                raise RuntimeError(
+                    "Rate limited (429) by Candid API after retries. "
+                    "Reduce request rate or try again later."
+                )
+
+            # Raise for other HTTP errors
+            response.raise_for_status()
+            return response.json()
+
+        except requests.exceptions.RequestException as e:
+            if attempt < retries:
+                sleep_s = backoff * (2 ** attempt)
+                time.sleep(sleep_s)
+                attempt += 1
+                continue
+            raise Exception(f"Error getting grants transactions after retries: {e}")
 
 def validate_input(value, value_type, min_value=None, max_value=None):
     try:

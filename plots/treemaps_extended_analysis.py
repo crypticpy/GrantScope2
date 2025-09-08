@@ -1,7 +1,9 @@
 import plotly.express as px
 import streamlit as st
 
-from utils.utils import download_excel
+from utils.utils import download_excel, generate_page_prompt
+from utils.app_state import set_selected_chart
+from utils.chat_panel import chat_panel
 
 
 def treemaps_extended_analysis(df, grouped_df, selected_chart, selected_role, ai_enabled):
@@ -9,6 +11,8 @@ def treemaps_extended_analysis(df, grouped_df, selected_chart, selected_role, ai
         usd_range_options = ['All'] + sorted(grouped_df['amount_usd_cluster'].unique())
 
         st.header("Treemaps by Subject, Population and Strategy")
+        # Single selector per page: set chart id for downstream chat context
+        set_selected_chart("treemaps.main")
         st.write("""
         Welcome to the Treemaps with Extended Analysis page! This interactive visualization allows you to explore the distribution of grant amounts across different subjects, populations, and strategies using dynamic treemaps.
 
@@ -28,6 +32,13 @@ def treemaps_extended_analysis(df, grouped_df, selected_chart, selected_role, ai
         with col2:
             selected_label = st.selectbox("Select USD Range", options=usd_range_options)
 
+        # Persist treemap filter state for AI chart-state tool
+        try:
+            st.session_state["treemap_analyze_column"] = str(analyze_column)
+            st.session_state["treemap_selected_label"] = str(selected_label)
+        except Exception:
+            pass
+
         if selected_label == 'All':
             filtered_data = grouped_df
         else:
@@ -41,18 +52,40 @@ def treemaps_extended_analysis(df, grouped_df, selected_chart, selected_role, ai
                          hover_data={'amount_usd': ':.2f'})
         fig.update_layout(margin=dict(l=0, r=0, t=30, b=0))
 
-        selected_block = None
-
-        def update_selected_block(trace, points, selector):
-            nonlocal selected_block
-            if points.point_inds:
-                selected_block = points.path[0][points.point_inds[0]]
-            else:
-                selected_block = None
-
-        fig.data[0].on_click(update_selected_block)
+        selected_block = st.selectbox(
+            "Select category for details",
+            options=grouped_data[analyze_column].astype(str).unique().tolist(),
+        )
 
         st.plotly_chart(fig)
+
+        if ai_enabled:
+            # Sidebar chat selector (single option on this page)
+            st.sidebar.subheader("Chat")
+            _ = st.sidebar.selectbox(
+                "Chat about",
+                options=["Treemaps Chart"],
+                index=0,
+                key="treemap_chat_target",
+            )
+            additional_context = f"treemaps by {analyze_column} for USD range '{selected_label}'"
+            pre_prompt = generate_page_prompt(
+                df,
+                grouped_df,
+                selected_chart,
+                selected_role,
+                additional_context,
+                current_filters={"analyze_column": analyze_column, "selected_label": selected_label},
+                sample_df=filtered_data,
+            )
+            chat_panel(
+                filtered_data,
+                pre_prompt,
+                state_key="treemaps_chat",
+                title="Treemaps — AI Assistant",
+            )
+        else:
+            st.info("AI-assisted analysis is disabled. Please provide an API key to enable this feature.")
 
         if selected_block:
             block_grants = filtered_data[filtered_data[analyze_column] == selected_block]
@@ -105,5 +138,5 @@ def treemaps_extended_analysis(df, grouped_df, selected_chart, selected_role, ai
 
         Happy exploring!
         """)
-        st.markdown(""" This app was produced by [Christopher Collins](https://www.linkedin.com/in/cctopher/) using the latest methods for enabling AI to Chat with Data. It also uses the Candid API, Streamlit, Plotly, and other open-source libraries. Generative AI solutions such as OpenAI GPT-4 and Claude Opus were used to generate portions of the source code.
+        st.markdown(""" This app was produced by [Christopher Collins](https://www.linkedin.com/in/cctopher/) using the latest methods for enabling AI to Chat with Data. It also uses the Candid API, Streamlit, Plotly, and other open-source libraries. Generative AI solutions such as OpenAI GPT-5 and Claude Opus were used to generate portions of the source code.
                         """)

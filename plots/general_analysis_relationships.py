@@ -1,7 +1,9 @@
 import plotly.express as px
 import streamlit as st
 
-from utils.utils import download_csv
+from utils.utils import download_csv, generate_page_prompt
+from utils.chat_panel import chat_panel
+from utils.app_state import set_selected_chart
 
 
 def general_analysis_relationships(df, _grouped_df, selected_chart, _selected_role, _ai_enabled):
@@ -81,6 +83,85 @@ def general_analysis_relationships(df, _grouped_df, selected_chart, _selected_ro
                       xaxis_tickangle=-45, xaxis_tickfont=dict(size=10))
     st.plotly_chart(fig)
 
+    # Persist relationships state for chart-state tool
+    try:
+        st.session_state["rel_selected_factor"] = selected_factor
+        st.session_state["rel_chart_type"] = chart_type
+        st.session_state["rel_selected_funder"] = selected_funder
+        st.session_state["rel_selected_affinity_factor"] = selected_affinity_factor
+    except Exception:
+        pass
+
+    # Sidebar chat selector for multiple relationship charts on this page
+    if _ai_enabled:
+        st.sidebar.subheader("Chat")
+        chat_target = st.sidebar.selectbox(
+            "Chat about",
+            options=["Description vs Amount", "Average by Factor", "Funder Affinity"],
+            index=0,
+            key="rel_chat_target",
+        )
+
+        if chat_target == "Description vs Amount":
+            set_selected_chart("relationships.description_vs_amount")
+            additional_context = "the relationship between grant description word count and award amount"
+            pre_prompt = generate_page_prompt(
+                df,
+                _grouped_df,
+                selected_chart,
+                _selected_role,
+                additional_context,
+                current_filters=None,
+                sample_df=unique_grants_df,
+            )
+            chat_panel(
+                unique_grants_df,
+                pre_prompt,
+                state_key="relationships_chat",
+                title="Relationships — AI Assistant",
+            )
+
+        elif chat_target == "Average by Factor":
+            set_selected_chart("relationships.avg_by_factor")
+            additional_context = f"average award amount by the selected factor '{selected_factor}' using a {chart_type}"
+            pre_prompt = generate_page_prompt(
+                df,
+                _grouped_df,
+                selected_chart,
+                _selected_role,
+                additional_context,
+                current_filters={"selected_factor": selected_factor, "chart_type": chart_type},
+                sample_df=avg_amount_by_factor,
+            )
+            chat_panel(
+                avg_amount_by_factor,
+                pre_prompt,
+                state_key="relationships_chat",
+                title="Relationships — AI Assistant",
+            )
+
+        else:
+            set_selected_chart("relationships.funder_affinity")
+            additional_context = f"funder affinity for '{selected_funder}' across '{selected_affinity_factor}'"
+            pre_prompt = generate_page_prompt(
+                df,
+                _grouped_df,
+                selected_chart,
+                _selected_role,
+                additional_context,
+                current_filters={
+                    "selected_funder": selected_funder,
+                    "affinity_factor": selected_affinity_factor,
+                },
+                sample_df=funder_affinity,
+            )
+            chat_panel(
+                funder_affinity,
+                pre_prompt,
+                state_key="relationships_chat",
+                title="Relationships — AI Assistant",
+            )
+
     st.write("""
         We hope that this General Analysis of Relationships page helps you uncover valuable insights and trends within the grant data. If you have any questions or need further assistance, please don't hesitate to reach out.
 
@@ -94,5 +175,5 @@ def general_analysis_relationships(df, _grouped_df, selected_chart, _selected_ro
         href = download_csv(unique_grants_df, "grant_data.csv")
         st.markdown(href, unsafe_allow_html=True)
 
-    st.markdown(""" This app was produced by [Christopher Collins](https://www.linkedin.com/in/cctopher/) using the latest methods for enabling AI to Chat with Data. It also uses the Candid API, Streamlit, Plotly, and other open-source libraries. Generative AI solutions such as OpenAI GPT-4 and Claude Opus were used to generate portions of the source code.
+    st.markdown(""" This app was produced by [Christopher Collins](https://www.linkedin.com/in/cctopher/) using the latest methods for enabling AI to Chat with Data. It also uses the Candid API, Streamlit, Plotly, and other open-source libraries. Generative AI solutions such as OpenAI GPT-5 and Claude Opus were used to generate portions of the source code.
                         """)

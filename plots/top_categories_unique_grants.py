@@ -3,7 +3,9 @@ from textwrap import shorten
 import plotly.express as px
 import streamlit as st
 
-from utils.utils import download_excel, download_multi_sheet_excel
+from utils.utils import download_excel, download_multi_sheet_excel, generate_page_prompt
+from utils.chat_panel import chat_panel
+from utils.app_state import set_selected_chart
 
 
 def top_categories_unique_grants(df, grouped_df, selected_chart, selected_role, ai_enabled):
@@ -57,6 +59,51 @@ def top_categories_unique_grants(df, grouped_df, selected_chart, selected_role, 
 
         st.plotly_chart(fig)
 
+        # Persist state for AI chart-state tool
+        try:
+            st.session_state["topcat_selected_categorical"] = str(selected_categorical)
+            st.session_state["topcat_top_n"] = int(top_n)
+            st.session_state["topcat_chart_type"] = str(chart_type)
+            st.session_state["topcat_sort_order"] = str(sort_order)
+        except Exception:
+            pass
+
+        # Sidebar chat panel (single chart on this page)
+        if ai_enabled:
+            st.sidebar.subheader("Chat")
+            _ = st.sidebar.selectbox(
+                "Chat about",
+                options=["Top Categories Chart"],
+                index=0,
+                key="topcat_chat_target",
+            )
+            # Single selector per page: set chart id for downstream chat context
+            set_selected_chart("top_categories.main")
+            additional_context = (
+                f"unique grant counts for top {int(top_n)} categories in {selected_categorical} "
+                f"rendered as a {chart_type.lower()} (sorted {sort_order.lower()})"
+            )
+            pre_prompt = generate_page_prompt(
+                df,
+                grouped_df,
+                selected_chart,
+                selected_role,
+                additional_context,
+                current_filters={
+                    "selected_categorical": selected_categorical,
+                    "top_n": int(top_n),
+                    "chart_type": chart_type,
+                    "sort_order": sort_order,
+                },
+                sample_df=normalized_counts.head(int(top_n)),
+            )
+            chat_panel(
+                normalized_counts.head(int(top_n)),
+                pre_prompt,
+                state_key="top_categories_chat",
+                title="Top Categories — AI Assistant",
+            )
+
         st.write(
             f"Top {top_n} Categories account for {normalized_counts.head(top_n)['Unique Grant Keys'].sum() / normalized_counts['Unique Grant Keys'].sum():.2%} of total unique grants")
 
@@ -88,5 +135,5 @@ def top_categories_unique_grants(df, grouped_df, selected_chart, selected_role, 
 
         Happy exploring!
         """)
-        st.markdown(""" This app was produced by [Christopher Collins](https://www.linkedin.com/in/cctopher/) using the latest methods for enabling AI to Chat with Data. It also uses the Candid API, Streamlit, Plotly, and other open-source libraries. Generative AI solutions such as OpenAI GPT-4 and Claude Opus were used to generate portions of the source code.
+        st.markdown(""" This app was produced by [Christopher Collins](https://www.linkedin.com/in/cctopher/) using the latest methods for enabling AI to Chat with Data. It also uses the Candid API, Streamlit, Plotly, and other open-source libraries. Generative AI solutions such as OpenAI GPT-5 and Claude Opus were used to generate portions of the source code.
                         """)

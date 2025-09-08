@@ -21,6 +21,7 @@ except ImportError:  # pragma: no cover - optional dependency
 
 from utils.utils import download_excel, generate_page_prompt
 from utils.chat_panel import chat_panel
+from utils.app_state import set_selected_chart
 
 
 def grant_description_word_clouds(df, grouped_df, selected_chart, selected_role, ai_enabled):
@@ -276,8 +277,18 @@ def grant_description_word_clouds(df, grouped_df, selected_chart, selected_role,
                 idx += 1
 
     if ai_enabled:
+        # Sidebar chat selector (single option on this page)
+        st.sidebar.subheader("Chat")
+        _ = st.sidebar.selectbox(
+            "Chat about",
+            options=["Word Clouds"],
+            index=0,
+            key="wordclouds_chat_target",
+        )
         st.subheader("Grant Description — AI Assistant")
         st.write("Ask questions about the grant descriptions to gain insights and explore the data further.")
+        # Single selector per page: set chart id for downstream chat context
+        set_selected_chart("wordclouds.main")
         additional_context = "the word clouds and search functionality for grant descriptions"
         pre_prompt = generate_page_prompt(df, grouped_df, selected_chart, selected_role, additional_context)
         chat_panel(grouped_df, pre_prompt, state_key="wordclouds_chat", title="Word Clouds — AI Assistant")
@@ -325,6 +336,6 @@ def grant_description_word_clouds(df, grouped_df, selected_chart, selected_role,
     )
 
     st.markdown(
-        """ This app was produced by [Christopher Collins](https://www.linkedin.com/in/cctopher/) using the latest methods for enabling AI to Chat with Data. It also uses the Candid API, Streamlit, Plotly, and other open-source libraries. Generative AI solutions such as OpenAI GPT-4 and Claude Opus were used to generate portions of the source code.
+        """ This app was produced by [Christopher Collins](https://www.linkedin.com/in/cctopher/) using the latest methods for enabling AI to Chat with Data. It also uses the Candid API, Streamlit, Plotly, and other open-source libraries. Generative AI solutions such as OpenAI GPT-5 and Claude Opus were used to generate portions of the source code.
                 """
     )
