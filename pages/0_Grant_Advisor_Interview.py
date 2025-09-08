@@ -221,12 +221,12 @@ def render_interview_page() -> None:
     # Demo controls
     demo_col, prefill_col = st.columns([1, 1])
     with demo_col:
-        if st.button("Load Demo (Prefill + Auto-run)"):
+        if st.button("Load Demo (Prefill + Auto-run)", key="load_demo_autorun_btn"):
             st.session_state["advisor_form"] = _prefill_from_demo()
             st.session_state["advisor_demo_autorun"] = True
             st.rerun()
     with prefill_col:
-        if st.button("Prefill Demo Only"):
+        if st.button("Prefill Demo Only", key="prefill_demo_only_btn"):
             st.session_state["advisor_form"] = _prefill_from_demo()
             st.session_state["advisor_demo_autorun"] = False
             st.rerun()
@@ -395,7 +395,7 @@ def render_interview_page() -> None:
     # Restore from JSON
     st.subheader("Restore Report From JSON")
     up = st.file_uploader("Upload an exported Advisor JSON", type=["json"], key="advisor_restore_upload")
-    if up is not None and st.button("Import Report JSON"):
+    if up is not None and st.button("Import Report JSON", key="import_report_json_btn"):
         try:
             restored = import_bundle_from_upload(up)
             st.session_state["advisor_last_bundle"] = restored

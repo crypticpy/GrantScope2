@@ -372,21 +372,21 @@ def render_report_streamlit(report: ReportBundle) -> None:
         st.subheader("Downloads")
         col1, col2, col3 = st.columns(3)
         with col1:
-            if st.button("Download JSON"):
+            if st.button("Download JSON", key="download_json_btn"):
                 json_text = report.to_json()
                 if download_text:
                     download_text(json_text, "advisor_report.json", mime="application/json")
                 else:
                     st.code(json_text, language="json")
         with col2:
-            if st.button("Download HTML"):
+            if st.button("Download HTML", key="download_html_btn"):
                 html_text = render_report_html(report)
                 if download_text:
                     download_text(html_text, "advisor_report.html", mime="text/html")
                 else:
                     st.code(html_text, language="html")
         with col3:
-            if st.button("Open Print View"):
+            if st.button("Open Print View", key="open_print_view_btn"):
                 html_text = render_report_html(report)
                 try:
                     if components:
