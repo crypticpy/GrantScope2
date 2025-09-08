@@ -96,24 +96,29 @@ def stage2_plan_user(needs: dict[str, Any]) -> str:
     tools = ", ".join(WHITELISTED_TOOLS)
     return dedent(
         f"""
-        Produce an AnalysisPlan as JSON with:
-        - "metric_requests": an array of objects {{ "tool": string, "params": object, "title": string }}
+        Produce a comprehensive AnalysisPlan as JSON with:
+        - "metric_requests": an array of 8-12 analysis objects {{ "tool": string, "params": object, "title": string }}
           The "tool" must be one of: {tools}
           "params" must be small and safe (column names, group-by lists, ranges, simple SQL SELECT/WITH for 'df_sql_select').
         - "narrative_outline": an array of section titles describing how to synthesize findings.
 
-        Guidance:
-        - Prioritize tools that illuminate subjects, geographies, populations, and time trends (e.g., df_groupby_sum, df_value_counts, df_pivot_table).
-        - When 'subjects', 'populations', or 'geographies' appear in StructuredNeeds, include at least one funder-level metric:
-          use "df_groupby_sum" with params.by including "funder_name" (optionally also "grant_subject_tran", "grant_geo_area_tran",
-          "grant_population_tran") and value "amount_usd", with a small top N (e.g., n=10). Title example: "Top Funders by Amount".
-        - Prefer value discovery before filtering: use "df_value_counts" or "df_unique" on "grant_subject_tran", "grant_population_tran",
-          and "grant_geo_area_tran" to identify actual values present in the dataset, then filter using those.
-        - Avoid exact equality/IN checks on categorical text fields that may contain compound values (e.g., semicolon-separated subjects).
-          Prefer tools like "df_filter_in" only with values you have confirmed exist, or use "df_sql_select" with case-insensitive LIKE/ILIKE
-          patterns against lower() to match substrings.
-        - Translate common geo codes to names where needed (e.g., "TX" -> "Texas"). Prefer city/state names present in the data (e.g., "Austin", "Texas").
-        - Keep each metric title short and human-friendly. Avoid large outputs; prefer top-10 lists and small tables.
+        Required Analysis Components (include all):
+        1. Funder Analysis: "df_groupby_sum" by ["funder_name"] to identify top funders
+        2. Subject Analysis: "df_value_counts" on "grant_subject_tran" for subject distribution
+        3. Population Analysis: "df_value_counts" on "grant_population_tran" for beneficiary analysis
+        4. Geographic Analysis: "df_value_counts" on "grant_geo_area_tran" for location insights
+        5. Temporal Analysis: "df_pivot_table" by ["year_issued"] to show funding trends over time
+        6. Amount Distribution: "df_describe" on "amount_usd" for statistical overview
+        7. Cross-Analysis: "df_groupby_sum" by ["grant_subject_tran", "grant_population_tran"] for intersection insights
+        8. Funder-Subject Analysis: "df_pivot_table" with index=["funder_name"], columns=["grant_subject_tran"], value="amount_usd"
+        
+        Additional Guidance:
+        - Use descriptive titles like "Top Funders by Total Amount", "Subject Area Distribution", "Geographic Funding Patterns"
+        - For groupby operations, use n=10-15 to get meaningful samples
+        - Include both amount-based and count-based analyses where applicable
+        - Ensure geographic analysis covers all location data in the dataset
+        - For pivot tables, use agg="sum" and top=15-20 for comprehensive views
+        - Narrative outline should include 8-10 section titles covering different aspects
 
         Return JSON only (no Markdown).
 
@@ -132,39 +137,38 @@ def stage4_synthesize_user(
     """User message for Stage 4: synthesize markdown sections using DataPoints."""
     return dedent(
         f"""
-        Draft a comprehensive report with a minimum of 8 detailed sections in Markdown using the provided DataPoints for grounding.
+        Create a grant funding guide for municipal employees written at an 8th-grade reading level. 
+        Use the DataPoints to create 8 practical sections that help non-experts understand their funding options.
         
-        Requirements:
-        - Create exactly 8 sections covering different aspects of the analysis
-        - Use clear headings and short paragraphs
-        - Cite DataPoints explicitly with their IDs (e.g., (DP-001)) wherever relevant
-        - Include actual data values, statistics, and rankings from the DataPoints
-        - Avoid restating full tables; briefly summarize and reference
-        - Do not invent data. If something isn't supported by DataPoints, say so
-        - Each section should provide actionable insights
+        Writing Requirements:
+        - Use simple, clear language (avoid jargon like "funder candidates", "aggregated data", "metrics")
+        - Write short paragraphs (2-3 sentences max)
+        - Include specific dollar amounts, percentages, and examples
+        - Add "What This Means for You" explanations after data points
+        - Use bullet points and numbered lists for clarity
+        - Cite DataPoints as sources (e.g., "Based on our analysis (DP-001)")
         
-        Section Types Required:
-        1. Overview - Executive summary of findings
-        2. Funding Patterns - Analysis of funding distribution
-        3. Key Players - Identification of major funders
-        4. Populations - Focus on beneficiary demographics
-        5. Geographies - Geographic distribution analysis
-        6. Time Trends - Temporal analysis of funding
-        7. Actionable Insights - Strategic recommendations
-        8. Next Steps - Concrete actions for grant seekers
+        Required Sections (write exactly these 8):
+        1. **Your Funding Landscape** - Simple overview of available funding
+        2. **Types of Funders to Contact** - Categories of foundations/organizations that give money
+        3. **How Much Money to Ask For** - Budget ranges that get approved most often
+        4. **Best Times to Apply** - When to submit applications based on funding cycles
+        5. **What Funders Want to See** - Most successful project types and requirements
+        6. **Your Geographic Advantages** - Location-based funding opportunities
+        7. **Positioning Your Project** - How to describe your work to get funded
+        8. **Your 90-Day Action Plan** - Step-by-step tasks with deadlines
         
-        Provide an array of sections, each with:
-        {{
-          "title": string,
-          "markdown_body": string
-        }}
+        For each section:
+        - Start with a clear problem or opportunity
+        - Present data in plain English ("75% of grants go to..." not "statistical analysis reveals")
+        - Add practical guidance ("This means you should...")
+        - Include specific examples and next steps
         
-        Include actual aggregated values and rankings in your analysis. For example:
-        - "Funder X ranks 1st with $2.3M in grants (DP-001)"
-        - "Education grants account for 35% of total funding (DP-002)"
-        - "Texas received 12% of all grants in the dataset (DP-003)"
+        Example format:
+        "Looking at 500+ grants in our database, we found that programs serving children get funded 3x more often than adult programs. **What this means for you:** If your project helps kids, mention that prominently in your application. If it serves adults, consider adding a youth component."
         
-        Inputs:
+        Return an array of sections with title and markdown_body.
+        
         AnalysisPlan (JSON):
         ```json
         {plan}
@@ -217,34 +221,43 @@ def stage5_recommend_user(
     """User message for Stage 5: recommend funders and response tuning tips."""
     return dedent(
         f"""
-        Generate comprehensive structured recommendations grounded in the DataPoints:
-        - "funder_candidates": Minimum 5 ranked items with fields {{ "name", "score", "rationale", "grounded_dp_ids": string[] }}
-        - "response_tuning": Minimum 7 concise tips with fields {{ "text", "grounded_dp_ids": string[] }}
-        - "search_queries": Minimum 5 short query strings for further research.
+        Create practical recommendations for municipal employees who are new to grant writing. Use plain language and focus on actionable next steps.
 
-        Funder Candidates Requirements:
-        - Provide actual aggregated data values in rationales (e.g., "Awarded $2.3M across 45 grants from 2020-2024")
-        - Include rankings where applicable (e.g., "Ranks 3rd among education funders in the dataset")
-        - Reference specific DataPoint IDs for grounding
-        - Scores are 0.0–1.0 and should reflect relative fit based on actual data
+        Generate these 3 sections:
+        - "funder_candidates": 8+ foundations to contact with {{ "name", "score", "rationale", "grounded_dp_ids": string[] }}
+        - "response_tuning": 10+ practical tips with {{ "text", "grounded_dp_ids": string[] }} 
+        - "search_queries": 8+ specific research terms for finding more opportunities
+
+        **Funder Candidates ("Foundations to Contact"):**
+        - Write rationales in simple language municipal employees understand
+        - Include specific dollar amounts and what they typically fund
+        - Explain WHY this funder is a good match (not just data rankings)
+        - Add contact difficulty ("Easy to reach" vs "Requires relationship building")
+        - Mix large and small funders for realistic options
         
-        Response Tuning Requirements:
-        - Provide data-driven tips grounded in actual dataset statistics
-        - Include specific values from DataPoints (e.g., "Emphasize outcomes in X subject area, which accounts for 35% of funding")
-        - Reference population and geography data where relevant
-        - Include actionable advice based on time trends
+        Examples:
+        - "This foundation gave $2.3M to education projects like yours. They prefer programs serving kids and have funded similar cities. Start here - they're known for responding to new applicants."
+        - "Corporate funder that supports communities where they have offices. Smaller grants ($5K-50K) but faster decisions. Good for equipment or training needs."
+
+        **Response Tuning ("How to Write Better Applications"):**
+        Write practical tips that help with actual grant writing:
+        - Budget guidance ("Ask for $X based on similar successful projects")
+        - Application timing ("Apply in March when they have the most money")
+        - What to emphasize ("Highlight youth impact - 75% of their grants serve kids")
+        - Common mistakes to avoid ("Don't ask for operating costs - they only fund programs")
+        - Local advantages ("Mention your partnership with [local organization]")
+        - Writing tips ("Use their exact language from their website")
         
-        Search Queries Requirements:
-        - Generate specific queries based on actual dataset values
-        - Include funder names, subject areas, and geographic regions from the data
-        - Focus on recent grants and current funding priorities
+        **Search Queries ("What to Google Next"):**
+        Create specific search terms for:
+        - Foundation directories ("Texas community foundations directory")
+        - Specific funders ("[Funder Name] application guidelines 2024")
+        - Similar projects ("after school program grants Austin successful")
+        - Government programs ("Texas education grants municipalities")
+        - Corporate giving ("[Company] community grants [your city]")
 
-        Rules:
-        - Use only signals derivable from the dataset context and DataPoints. No external assumptions.
-        - Scores are 0.0–1.0 and should reflect relative fit based on actual data values.
-        - Cite relevant DataPoint IDs for each item.
-        - Include actual aggregated values and rankings in all responses.
-
+        Use actual data from DataPoints to support every recommendation. Reference dollar amounts, success rates, and specific examples.
+        
         Return JSON only (no Markdown).
 
         StructuredNeeds (JSON):

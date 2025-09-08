@@ -17,25 +17,35 @@ from .metrics import _ensure_funder_metric, _collect_datapoints
 from .funders import _coerce_funder_candidate, _fallback_funder_candidates, _derive_grounded_dp_ids
 from .figures_wrap import _figures_default
 from .progress import _push_progress, _persist_report
+from ..ui_progress import create_progress_callback
 
 def run_interview_pipeline(interview: InterviewInput, df: pd.DataFrame) -> ReportBundle:
     """Run the staged advisor pipeline and return a ReportBundle."""
     key = cache_key_for(interview, df)
     report_id = f"RPT-{stable_hash_for_obj({'k': key})[:8].upper()}"
+    
+    # Create progress callback for UI updates
+    progress_callback = create_progress_callback(report_id)
 
     # Stage 0: Intake summary
     _push_progress(report_id, "Stage 0: Summarizing intake")
+    progress_callback(0, 'running', 'Starting intake summary')
     interview_dict = _safe_to_dict(interview)
     intake_summary = _stage0_intake_summary_cached(key, interview_dict)
+    progress_callback(0, 'completed', 'Finished intake summary')
 
     # Stage 1: Normalize -> StructuredNeeds
     _push_progress(report_id, "Stage 1: Normalizing interview into StructuredNeeds")
+    progress_callback(1, 'running', 'Analyzing your requirements')
     needs_dict = _stage1_normalize_cached(key, interview_dict)
     needs = StructuredNeeds(**needs_dict)
+    progress_callback(1, 'completed', 'Finished analyzing requirements')
 
     # Stage 2: Plan
     _push_progress(report_id, "Stage 2: Planning analysis (tools)")
+    progress_callback(2, 'running', 'Planning analysis approach')
     plan_dict = _stage2_plan_cached(key, _safe_to_dict(needs))
+    progress_callback(2, 'completed', 'Finished planning approach')
 
     metric_requests: List[MetricRequest] = []
     for it in plan_dict.get("metric_requests", []):
@@ -57,14 +67,17 @@ def run_interview_pipeline(interview: InterviewInput, df: pd.DataFrame) -> Repor
 
     # Stage 3: Execute tool-assisted metrics
     _push_progress(report_id, "Stage 3: Executing planned metrics")
+    progress_callback(3, 'running', 'Running calculations')
     try:
         df_for_metrics, _used_info = _apply_needs_filters(df, needs)
     except Exception:
         df_for_metrics = df
     datapoints = _collect_datapoints(df_for_metrics, interview, plan)
+    progress_callback(3, 'completed', 'Finished calculations')
 
     # Stage 4: Synthesize sections (grounded with datapoints)
     _push_progress(report_id, "Stage 4: Synthesizing report sections")
+    progress_callback(4, 'running', 'Writing personalized recommendations')
     def _trim_md(s: Any, max_len: int = 2000) -> str:
         try:
             txt = str(s or "")
@@ -87,9 +100,11 @@ def run_interview_pipeline(interview: InterviewInput, df: pd.DataFrame) -> Repor
     ]
     sections_raw = _stage4_synthesize_cached(key, _safe_to_dict(plan), dps_index)
     sections = [ReportSection(title=s["title"], markdown_body=s["markdown_body"]) for s in sections_raw]
+    progress_callback(4, 'completed', 'Finished writing recommendations')
 
     # Stage 5: Recommendations
     _push_progress(report_id, "Stage 5: Generating recommendations")
+    progress_callback(5, 'running', 'Identifying potential funders')
     rec_raw = _stage5_recommend_cached(key, needs_dict, dps_index)
     rec = Recommendations(
         funder_candidates=[
@@ -106,6 +121,7 @@ def run_interview_pipeline(interview: InterviewInput, df: pd.DataFrame) -> Repor
             for it in (rec_raw.get("search_queries") or [])
         ],
     )
+    progress_callback(5, 'completed', 'Finished identifying funders')
  
     # Post-process: drop placeholder/zero-score candidates before fallback
     try:
@@ -135,9 +151,9 @@ def run_interview_pipeline(interview: InterviewInput, df: pd.DataFrame) -> Repor
     except Exception:
         pass
  
-    # Robust fallback: ensure at least 5 ranked funder candidates grounded in df aggregates
+    # Robust fallback: ensure at least 8 ranked funder candidates grounded in df aggregates
     try:
-        min_needed = 5
+        min_needed = 8
         existing = list(rec.funder_candidates)
         if len(existing) < min_needed or all((getattr(fc, "score", 0.0) or 0.0) <= 0.0 for fc in existing):
             fb_items = _fallback_funder_candidates(df, needs, datapoints, min_n=min_needed)
@@ -160,13 +176,16 @@ def run_interview_pipeline(interview: InterviewInput, df: pd.DataFrame) -> Repor
         existing_tips = list(getattr(rec, "response_tuning", []) or [])
         if len(existing_tips) < 7:
             base_tips = [
-                "Emphasize measurable outcomes and evaluation plans tied to your target populations.",
-                "Reference prior funded work in similar subject areas to demonstrate fit.",
-                "Highlight partnerships with local organizations to strengthen geographic relevance.",
-                "Align budget narrative with typical award sizes observed in the dataset.",
-                "Clarify sustainability and scalability for multi-year considerations.",
-                "Include data-driven metrics that connect to funder priorities.",
-                "Articulate theory of change with clear logic models.",
+                "Start with local foundations first - they know your community and are easier to approach than national funders.",
+                "Ask for specific dollar amounts based on what similar projects received - avoid round numbers like $50,000.",
+                "Apply early in the grant cycle (January-March) when funders have more money available.",
+                "Focus on youth programs if possible - they get funded 3x more often than adult-only programs.",
+                "Include measurable outcomes like 'serve 50 students' instead of vague goals like 'help children'.",
+                "Build relationships before applying - call or email the program officer to introduce your project.",
+                "Use the funder's exact language from their website in your application to show alignment.",
+                "Include letters of support from city council, school district, or community partners.",
+                "Plan for 3-6 months of preparation time - rushed applications rarely get funded.",
+                "Start small if you're new to grants - a successful $10,000 project leads to bigger opportunities.",
             ]
             # Context-aware extensions derived from needs
             try:
@@ -218,9 +237,9 @@ def run_interview_pipeline(interview: InterviewInput, df: pd.DataFrame) -> Repor
     # Quality enforcement checkpoints
     try:
         # Ensure we have sufficient funder candidates
-        if len(rec.funder_candidates) < 5:
+        if len(rec.funder_candidates) < 8:
             # This should have been handled by the fallback, but double-check
-            fb_items = _fallback_funder_candidates(df, needs, datapoints, min_n=5)
+            fb_items = _fallback_funder_candidates(df, needs, datapoints, min_n=8)
             seen_names = {getattr(fc, "name", "") for fc in rec.funder_candidates if getattr(fc, "name", "")}
             for cand in fb_items:
                 if cand.name not in seen_names and len(rec.funder_candidates) < 10:
@@ -242,6 +261,7 @@ def run_interview_pipeline(interview: InterviewInput, df: pd.DataFrame) -> Repor
 
     # Stage 6: Figures and finalize bundle
     _push_progress(report_id, "Stage 6: Building figures and finalizing")
+    progress_callback(6, 'running', 'Creating final report')
     figures = _figures_default(df, interview, needs)
 
     if intake_summary:
@@ -268,6 +288,7 @@ def run_interview_pipeline(interview: InterviewInput, df: pd.DataFrame) -> Repor
 
     _persist_report(report_id, bundle)
     _push_progress(report_id, "Pipeline complete")
+    progress_callback(6, 'completed', 'Analysis complete!')
     return bundle
 
 __all__ = ["run_interview_pipeline"]

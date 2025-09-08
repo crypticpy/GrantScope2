@@ -32,6 +32,11 @@ try:
         get_demo_responses_dict,
         load_demo_responses_json,
     )
+    from GrantScope.advisor.ui_progress import (  # type: ignore
+        render_live_progress_tracker,
+        render_minimal_progress,
+        cleanup_progress_state,
+    )
 except Exception:
     from advisor.schemas import InterviewInput, ReportBundle  # type: ignore
     from advisor.pipeline import run_interview_pipeline  # type: ignore
@@ -47,6 +52,11 @@ except Exception:
         get_demo_interview,
         get_demo_responses_dict,
         load_demo_responses_json,
+    )
+    from advisor.ui_progress import (  # type: ignore
+        render_live_progress_tracker,
+        render_minimal_progress,
+        cleanup_progress_state,
     )
 
 
@@ -117,15 +127,6 @@ def _make_interview_from_inputs(
     )
 
 
-def _render_progress_ticks() -> None:
-    # Simple, visible staged ticks (at least 4 stages)
-    st.markdown("#### Progress")
-    st.caption("Brewing insights from your data… ✅")
-    st.caption("Grinding through funding trends… ✅")
-    st.caption("Steeping recommendations to perfection… ✅")
-    st.caption("Almost there… ✅")
-
-
 def _analysis_start_toast() -> None:
     """Show a transient toast indicating expected runtime."""
     try:
@@ -140,6 +141,20 @@ def _analysis_start_toast() -> None:
             "Starting analysis — this may take up to ~5 minutes on first run. "
             "Subsequent runs will be faster due to caching."
         )
+
+
+def _get_report_id(interview_data: Dict[str, Any], df: pd.DataFrame) -> str:
+    """Generate a unique report ID for progress tracking."""
+    try:
+        from advisor.pipeline.cache import cache_key_for
+        from advisor.pipeline.imports import stable_hash_for_obj
+        
+        key = cache_key_for(interview_data, df)
+        return f"RPT-{stable_hash_for_obj({'k': key})[:8].upper()}"
+    except Exception:
+        # Fallback to timestamp if imports fail
+        import time
+        return f"RPT-{int(time.time())}"
 
 
 def render_interview_page() -> None:
@@ -233,12 +248,28 @@ def render_interview_page() -> None:
             st.error("Data not available for analysis.")
         else:
             _analysis_start_toast()
-            with st.spinner("Running Advisor pipeline on demo…"):
+            
+            # Generate report ID for progress tracking
+            report_id = _get_report_id(form_vals, df_nonnull)
+            
+            # Create placeholder for progress tracker
+            progress_placeholder = st.empty()
+            
+            # Run the pipeline
+            try:
                 report = run_interview_pipeline(interview, df_nonnull)
                 st.session_state["advisor_last_bundle"] = report
-        _render_progress_ticks()
+                
+                # Clear progress tracker and show completion
+                progress_placeholder.empty()
+                st.success("✅ Demo analysis complete!")
+                
+            except Exception as e:
+                progress_placeholder.empty()
+                st.error(f"Pipeline error: {e}")
+                return
+                
         render_report_streamlit(st.session_state["advisor_last_bundle"])
-        st.success("Demo analysis complete.")
         st.stop()
 
     # Normal run path
@@ -272,19 +303,36 @@ def render_interview_page() -> None:
         }
 
         df_nonnull2 = cast(pd.DataFrame, df) if df is not None else None
-        _analysis_start_toast()
-        with st.spinner("Running Advisor pipeline…"):
+        
+        if df_nonnull2 is None:
+            st.error("Data not available for analysis.")
+        else:
+            # Generate report ID for progress tracking
+            report_id = _get_report_id(st.session_state.get("advisor_form", {}), df_nonnull2)
+            
+            _analysis_start_toast()
+            
+            # Create placeholder for progress tracker
+            progress_placeholder = st.empty()
+            
             try:
-                if df_nonnull2 is None:
-                    raise RuntimeError("Data not available")
+                # Show live progress tracker
+                with progress_placeholder:
+                    render_live_progress_tracker(report_id, show_estimates=True)
+                
                 report = run_interview_pipeline(interview, df_nonnull2)
+                
+                # Clear progress tracker and show completion
+                progress_placeholder.empty()
+                st.success("✅ Analysis complete!")
+                
             except Exception as e:
+                progress_placeholder.empty()
                 st.error(f"Pipeline error: {e}")
                 report = None
 
         if report:
             st.session_state["advisor_last_bundle"] = report
-            _render_progress_ticks()
             render_report_streamlit(report)
             st.success("Analysis complete. See tabs above for details and downloads.")
 

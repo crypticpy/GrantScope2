@@ -5,11 +5,14 @@ matplotlib
 wordcloud
 xlsxwriter
 llama-index
-streamlit
-plotly-express
-python-dotenv
 llama-index-experimental
+llama-index-llms-openai
+streamlit
+python-dotenv
 openai
 duckdb
+requests
+tqdm
+scikit-learn
 pydantic>=1.10,<3
 # kaleido  # optional for static image export

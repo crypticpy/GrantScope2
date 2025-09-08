@@ -169,21 +169,57 @@ def _stage2_plan_cached(key: str, needs_dict: Dict[str, Any]) -> Dict[str, Any]:
             "metric_requests": [
                 {
                     "tool": "df_groupby_sum",
-                    "params": {"by": ["grant_subject_tran"], "value": "amount_usd", "n": 10},
-                    "title": "Top Subjects by Amount",
+                    "params": {"by": ["funder_name"], "value": "amount_usd", "n": 15},
+                    "title": "Top Funders by Total Amount",
+                },
+                {
+                    "tool": "df_value_counts",
+                    "params": {"column": "grant_subject_tran", "n": 12},
+                    "title": "Subject Area Distribution",
                 },
                 {
                     "tool": "df_value_counts",
                     "params": {"column": "grant_population_tran", "n": 10},
-                    "title": "Top Populations",
+                    "title": "Population Focus Analysis",
+                },
+                {
+                    "tool": "df_value_counts",
+                    "params": {"column": "grant_geo_area_tran", "n": 15},
+                    "title": "Geographic Funding Patterns",
                 },
                 {
                     "tool": "df_pivot_table",
-                    "params": {"index": ["year_issued"], "value": "amount_usd", "agg": "sum", "top": 20},
-                    "title": "Time Trend by Year",
+                    "params": {"index": ["year_issued"], "value": "amount_usd", "agg": "sum", "top": 15},
+                    "title": "Funding Trends Over Time",
+                },
+                {
+                    "tool": "df_describe",
+                    "params": {"column": "amount_usd"},
+                    "title": "Grant Amount Distribution",
+                },
+                {
+                    "tool": "df_groupby_sum",
+                    "params": {"by": ["grant_subject_tran", "grant_population_tran"], "value": "amount_usd", "n": 12},
+                    "title": "Subject-Population Intersection Analysis",
+                },
+                {
+                    "tool": "df_top_n",
+                    "params": {"column": "amount_usd", "n": 10},
+                    "title": "Largest Individual Grants",
                 },
             ],
-            "narrative_outline": ["Overview", "Funding Patterns", "Populations Served", "Time Trends"],
+            "narrative_outline": [
+                "Executive Summary",
+                "Funding Landscape Analysis", 
+                "Key Funders and Players",
+                "Subject Area Insights",
+                "Target Population Analysis",
+                "Geographic Distribution",
+                "Temporal Trends",
+                "Strategic Recommendations",
+                "Implementation Guidance",
+                "Next Steps"
+            ],
         }
 
 
@@ -336,16 +372,264 @@ def _generate_section_by_type(section_type: str, dps_index: List[Dict[str, Any]]
 def _generate_deterministic_sections(dps_index: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """Generate a deterministic set of 8 sections when LLM fails."""
     sections = []
-    section_types = [
-        "overview", "funding patterns", "key players", "populations",
-        "geographies", "time trends", "actionable insights", "next steps"
+    section_config = [
+        ("Overview of Your Funding Opportunities", "overview"),
+        ("Funding Patterns and Landscape", "funding_patterns"), 
+        ("Target Populations Analysis", "populations"),
+        ("Geographies and Funding Distribution", "geographies"),
+        ("Key Funders to Contact", "key_players"),
+        ("Actionable Insights for Success", "actionable_insights"),
+        ("Time Trends and Opportunities", "time_trends"),
+        ("Next Steps and Recommendations", "next_steps")
     ]
     
-    for section_type in section_types:
+    for title, section_type in section_config:
         section = _generate_section_by_type(section_type, dps_index, sections)
+        # Override title to be more user-friendly
+        section["title"] = title
         sections.append(section)
     
     return sections
+
+def _generate_municipal_section(title: str, section_type: str, dps_index: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Generate user-friendly sections for municipal employees."""
+    
+    # Extract useful data points for context
+    data_context = ""
+    if dps_index:
+        sample_dps = dps_index[:2]  # Use first 2 datapoints for context
+        for dp in sample_dps:
+            if dp.get('table_md'):
+                data_context += f"Based on our analysis of grant data (Source: {dp.get('title', 'Data Analysis')}), "
+                break
+    
+    content_templates = {
+        "funding_landscape": f"""
+## Your Funding Landscape
+
+**The Big Picture:** There are hundreds of foundations and organizations that give money to public projects like yours. {data_context}we can help you find the right ones.
+
+**What's Available:**
+• **Foundation Grants** - Private foundations that support community projects ($5,000 - $500,000+)
+• **Corporate Giving** - Companies that fund local initiatives ($1,000 - $100,000)
+• **Government Grants** - Federal and state programs ($10,000 - $1,000,000+)
+• **Community Foundations** - Local organizations focused on your area ($2,000 - $50,000)
+
+**What This Means for You:** You have multiple funding sources to choose from. Don't put all your eggs in one basket - apply to several different types of funders to increase your chances of success.
+
+**Quick Tip:** Start with local foundations first. They know your community and are often easier to reach than large national foundations.
+""",
+        
+        "funder_types": f"""
+## Types of Funders to Contact
+
+**Private Foundations** are your best bet for ongoing projects. {data_context}they typically give larger amounts and fund for multiple years.
+• Look for foundations with names like "[Name] Foundation" or "[Name] Fund"
+• They focus on specific issues (education, health, environment)
+• Award amounts: Usually $25,000 - $500,000
+• Application process: More formal, longer deadlines
+
+**Corporate Foundations** are great for community visibility projects.
+• Banks, utilities, and local businesses often have giving programs
+• They like projects that make their company look good in the community
+• Award amounts: Typically $1,000 - $50,000
+• Application process: Shorter, faster decisions
+
+**Community Foundations** know your local needs best.
+• These are local organizations that pool donations from many people
+• They focus on your specific city or county
+• Award amounts: Usually $5,000 - $75,000
+• Application process: Less formal, more relationship-based
+
+**What This Means for You:** Match your project to the right funder type. Need $100,000 for a new program? Focus on private foundations. Need $10,000 for equipment? Try corporate giving.
+""",
+        
+        "budget_guidance": f"""
+## How Much Money to Ask For
+
+**The Sweet Spot:** {data_context}most successful grants fall into specific ranges based on project type and duration.
+
+**Typical Award Ranges:**
+• **Small Projects (1 year):** $5,000 - $25,000
+  - Equipment, training, small program improvements
+  - Success rate: Higher (less competition)
+
+• **Medium Projects (1-2 years):** $25,000 - $100,000
+  - New programs, staff positions, facility improvements
+  - Success rate: Moderate (most competitive range)
+
+• **Large Projects (2-3 years):** $100,000 - $500,000+
+  - Major initiatives, multiple staff, significant infrastructure
+  - Success rate: Lower (requires extensive planning)
+
+**What This Means for You:**
+• **Start smaller** - If you're new to grants, ask for less money to build a track record
+• **Match the funder** - A $500,000 foundation won't fund your $5,000 project
+• **Be realistic** - Can you actually spend the money effectively in the timeframe?
+
+**Budget Breakdown Tip:** Funders want to see exactly how you'll spend their money. Break it down: 60% staff, 25% programs, 10% equipment, 5% evaluation.
+""",
+        
+        "timing_guidance": f"""
+## Best Times to Apply
+
+**Grant Calendar Basics:** {data_context}timing can make or break your application. Most foundations work on predictable schedules.
+
+**Best Application Months:**
+• **January - March:** Many foundations start their grant cycles
+• **August - October:** Second round of funding for the year
+• **Avoid:** November-December (holiday planning) and June-July (summer break)
+
+**Planning Timeline:**
+• **6 months before:** Research funders, start building relationships
+• **3 months before:** Begin writing your proposal
+• **1 month before:** Final edits, gather required documents
+• **Application deadline:** Submit early (not on the last day!)
+
+**What This Means for You:**
+• **Plan ahead** - Good grants take months to prepare
+• **Apply early in the cycle** - Funders have more money available
+• **Build relationships first** - Call or email before you apply
+
+**Pro Tip:** Many funders require a "Letter of Intent" 2-3 months before the full application. Don't miss these pre-deadlines.
+
+**Your Action:** Start working on grants for next year THIS month. The best funding goes to those who plan ahead.
+""",
+        
+        "project_requirements": f"""
+## What Funders Want to See
+
+**The Winning Formula:** {data_context}successful projects share common features that funders love to support.
+
+**Must-Have Elements:**
+• **Clear Problem** - What specific issue are you solving?
+• **Measurable Results** - How will you prove success? (Number of people served, test scores improved, etc.)
+• **Community Support** - Letters from partners, city council, community groups
+• **Qualified Staff** - Show you have the right people to do the work
+• **Reasonable Budget** - Every dollar should be justified
+
+**Project Types That Get Funded Most:**
+1. **Youth Programs** - Anything serving kids and teens
+2. **Education Initiatives** - After school, literacy, STEM programs
+3. **Community Health** - Prevention, wellness, access to care
+4. **Economic Development** - Job training, small business support
+5. **Environmental Projects** - Sustainability, clean energy, conservation
+
+**What This Means for You:**
+• **Focus on outcomes** - Don't just describe activities, explain the impact
+• **Use data** - Include statistics about the problem you're solving
+• **Tell stories** - Share examples of people who will benefit
+
+**Red Flags to Avoid:**
+• Vague goals ("help the community")
+• No evaluation plan
+• Unrealistic timelines
+• Budgets that don't add up
+""",
+        
+        "geographic_opportunities": f"""
+## Your Geographic Advantages
+
+**Location Matters:** {data_context}where you're located affects which funders will support your work and how much money is available.
+
+**Your Local Advantages:**
+• **Community Foundations** in your area know local needs and priorities
+• **Corporate Funders** prefer to support communities where they have offices or customers
+• **State and Federal Programs** often have set-aside funds for different regions
+
+**Geographic Funding Strategies:**
+• **Local First** - Start with foundations within 50 miles of your project
+• **State Programs** - Check your state government's grant portal monthly
+• **Regional Connections** - Look for foundations that historically fund your area
+• **National Reach** - Only pursue national funders if your project has broad impact
+
+**What This Means for You:**
+• **Build local relationships** - Attend community foundation events and city council meetings
+• **Leverage local connections** - Use your mayor, city council members, and chamber of commerce contacts
+• **Highlight local impact** - Show how your project benefits the specific community
+
+**Research Tip:** Search online for "[Your City] foundation directory" or "[Your County] grant opportunities" to find local funding sources.
+
+**Partnership Power:** Team up with organizations in other cities for regional grants that require multiple locations.
+""",
+        
+        "project_positioning": f"""
+## Positioning Your Project
+
+**Make It Irresistible:** {data_context}how you describe your project determines whether funders will pay attention or move on to the next application.
+
+**Winning Positioning Strategies:**
+
+**1. Lead with Impact**
+• Bad: "We want to start an after-school program"
+• Good: "We'll keep 75 at-risk kids safe and learning while their parents work"
+
+**2. Use Compelling Statistics**
+• "30% of our students read below grade level" (creates urgency)
+• "Studies show after-school programs reduce juvenile crime by 40%" (proves effectiveness)
+
+**3. Show Community Need**
+• Include demographic data about your area
+• Quote local leaders supporting your project
+• Reference other successful similar programs
+
+**4. Match Funder Priorities**
+• Read the funder's website and recent grants
+• Use their language in your proposal
+• Connect your work to their stated goals
+
+**What This Means for You:**
+• **Research each funder** - Customize every application
+• **Lead with benefits** - What problems will you solve?
+• **Use their words** - If they say "evidence-based," use that term
+• **Be specific** - Exact numbers are better than "many" or "most"
+
+**Elevator Pitch Formula:** "We help [specific group] achieve [specific outcome] by [specific method], which will result in [measurable benefit] for our community."
+""",
+        
+        "action_plan": f"""
+## Your 90-Day Action Plan
+
+**Ready to Get Started?** {data_context}follow this step-by-step plan to go from idea to submitted application in 90 days.
+
+**Days 1-30: Foundation Building**
+□ **Week 1:** Define your project in one paragraph
+□ **Week 2:** Research 10-15 potential funders using foundation directories
+□ **Week 3:** Create a simple budget breakdown
+□ **Week 4:** Start gathering support letters from community partners
+
+**Days 31-60: Relationship Building**
+□ **Week 5-6:** Email or call your top 5 funders to introduce your project
+□ **Week 7:** Attend local foundation events or city council meetings
+□ **Week 8:** Set up meetings with 2-3 potential funders
+
+**Days 61-90: Application Preparation**
+□ **Week 9:** Write your first draft proposal
+□ **Week 10:** Get feedback from colleagues and community partners
+□ **Week 11:** Revise proposal and finalize budget
+□ **Week 12:** Submit application (aim for 1 week before deadline)
+
+**Your Weekly Tasks:**
+• **Mondays:** Research one new funder
+• **Wednesdays:** Work on proposal writing
+• **Fridays:** Follow up on relationships and partnerships
+
+**What This Means for You:**
+• **Start now** - Don't wait until you have the "perfect" project
+• **Work consistently** - 2 hours per week is better than 8 hours once a month
+• **Build relationships** - Successful grant writers know their funders personally
+
+**Success Metrics:** By day 90, you should have submitted 2-3 applications and have 5+ funders who know your organization.
+"""
+    }
+    
+    content = content_templates.get(section_type, 
+        f"## {title}\n\nThis section provides guidance on {section_type.replace('_', ' ')}. {data_context}we recommend focusing on practical steps that will help your municipal organization secure funding.\n\n**Key Points:**\n• Research thoroughly before applying\n• Build relationships with funders\n• Focus on measurable community impact\n• Plan your applications well in advance\n\n**Next Steps:** Review the data provided and identify 2-3 specific actions you can take this month to move your funding goals forward.")
+    
+    return {
+        "title": title,
+        "markdown_body": content
+    }
 
 
 @st.cache_data(show_spinner=True)

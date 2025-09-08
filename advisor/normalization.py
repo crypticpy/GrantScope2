@@ -81,21 +81,42 @@ def _expand_token_variants(token: str, kind: str = "generic") -> List[str]:
         if t in ("education", "youth_education", "youth education"):
             syns += ["education", "education services", "elementary and secondary education", "youth development"]
     if kind == "geography":
-        # Minimal US mapping; extend as needed
+        # Enhanced US mapping with cities and regions
         geo_map = {
             "us": ["united states", "u.s.", "usa"],
-            "tx": ["texas"],
-            "ca": ["california"],
-            "ny": ["new york"],
-            "fl": ["florida"],
-            "il": ["illinois"],
-            "wa": ["washington"],
-            "ma": ["massachusetts"],
+            "tx": ["texas", "austin", "dallas", "houston", "san antonio", "fort worth"],
+            "ca": ["california", "los angeles", "san francisco", "san diego", "sacramento", "oakland"],
+            "ny": ["new york", "new york city", "brooklyn", "queens", "manhattan", "albany"],
+            "fl": ["florida", "miami", "orlando", "tampa", "jacksonville", "tallahassee"],
+            "il": ["illinois", "chicago", "springfield", "rockford"],
+            "wa": ["washington", "seattle", "spokane", "tacoma", "olympia"],
+            "ma": ["massachusetts", "boston", "cambridge", "worcester", "springfield"],
+            # Add reverse mappings for major cities
+            "austin": ["texas", "tx"],
+            "dallas": ["texas", "tx"],
+            "houston": ["texas", "tx"],
+            "los angeles": ["california", "ca"],
+            "san francisco": ["california", "ca"],
+            "chicago": ["illinois", "il"],
+            "seattle": ["washington", "wa"],
+            "boston": ["massachusetts", "ma"],
+            "miami": ["florida", "fl"],
+            "new york city": ["new york", "ny"],
         }
         if t in geo_map:
             syns += geo_map[t]
         # Also add capitalized versions (city/state names often are capitalized in text)
         syns += [s.title() for s in syns if s]
+        
+        # Add common geographic descriptors
+        if "texas" in t or "tx" in t:
+            syns += ["austin", "texas", "tx"]
+        elif "california" in t or "ca" in t:
+            syns += ["california", "ca"]
+        elif "austin" in t.lower():
+            syns += ["texas", "tx", "austin"]
+        elif "los angeles" in t.lower() or "san francisco" in t.lower():
+            syns += ["california", "ca"]
 
     for s in syns:
         if s:

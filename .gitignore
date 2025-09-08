@@ -43,3 +43,6 @@ Thumbs.db
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Crush local state
+.crush/
