@@ -2,7 +2,7 @@
 
 This document tracks upgrade ideas and organizes them into actionable batches with clear strategy, scope, and acceptance criteria. The goal is to make GrantScope more robust, modern, and interactive while keeping changes safe and iterative.
 
-Last updated: 2025-09-05
+Last updated: 2025-09-08
 
 ## 0) TL;DR — Execution Order
 
@@ -10,11 +10,20 @@ Last updated: 2025-09-05
 2. AI chat UX upgrade (chat UI + streaming) on top 1–2 pages
 3. Multipage navigation + layout polish
 4. Visual/interaction upgrades (dialogs, popovers, consistent formatting)
-5. AI “tools” and context (Candid fetch as tool, better prompts, guardrails)
+5. AI "tools" and context (Candid fetch as tool, better prompts, guardrails)
 6. Performance and caching (groupbys, sampling)
 7. Secrets, config, and packaging (pinned deps, secrets, .env)
 8. Tests, type hints, and CI
 9. Docs, examples, and release notes
+
+## Status Update
+
+As of September 2025, significant progress has been made on several batches:
+
+- ✅ **Batch 1 Complete**: Data preprocessing has been significantly improved with better explode logic, dtype handling, and deduplication. Schema validation has been added with helpful error display.
+- ✅ **Batch 2 Complete**: AI chat UX has been upgraded with modern Streamlit chat primitives on Data Summary and Distribution pages. Response streaming with cancel affordance has been implemented. Per-page chat history is maintained in session state.
+- ✅ **Batch 3 Complete**: The app has been converted to a multipage application with proper navigation. User Role persistence across pages has been implemented. Controls have been grouped with consistent headers.
+- ✅ **Batch 7 Complete**: Configuration system has been centralized with support for st.secrets, environment variables, and .env files. Candid API key has been moved from hardcoded to secrets management. Rate limiting has been added to the fetcher.
 
 ---
 
@@ -317,13 +326,13 @@ Note: We’ll target current stable Streamlit supporting these primitives; final
 
 ## 9) Tracking checklist
 
-- [ ] Batch 1 complete
-- [ ] Batch 2 complete
-- [ ] Batch 3 complete
+- [x] Batch 1 complete
+- [x] Batch 2 complete
+- [x] Batch 3 complete
 - [ ] Batch 4 complete
 - [ ] Batch 5 complete
 - [ ] Batch 6 complete
-- [ ] Batch 7 complete
+- [x] Batch 7 complete
 - [ ] Batch 8 complete
 - [ ] Batch 9 complete
 - [ ] Batch 10 complete

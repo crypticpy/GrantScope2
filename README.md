@@ -15,6 +15,7 @@ GrantScope is an interactive tool designed to aid grant analysts, grant writers,
 - **Predefined Questions**: Users can select from a set of predefined questions relevant to each chart or analysis, guiding them in uncovering key insights and patterns.
 - **Custom Questions**: Users have the flexibility to ask their own questions related to the data, leveraging the power of natural language processing to obtain meaningful responses.
 - **Focused Insights**: The AI provides focused and relevant insights based on the specific chart or analysis being viewed, avoiding confusion between different sections of the dashboard.
+- **Chat Streaming**: Experimental streaming chat experience that provides real-time responses with a cancel option for better user experience.
 
 ### Detailed Analysis Tools
 - **Univariate Analysis**: Perform detailed statistical analysis on numeric columns to understand the distribution, variability, and central tendencies of grant amounts and other numerical data points.
@@ -118,6 +119,12 @@ Notes:
 ### Legacy single-page router (temporary, optional)
 - The legacy single-file selectbox router in [`app.py`](GrantScope/app.py) has been retired by default in favor of multipage navigation.
 - For temporary compatibility/testing, you can enable it by setting the environment variable `GS_ENABLE_LEGACY_ROUTER=1` before running the app. This legacy mode will be removed in a future release.
+
+### Data Fetching
+GrantScope includes a Candid API data fetcher tool that allows users to retrieve grant data directly from the Candid API:
+- Configure the CANDID_API_KEY in your environment or secrets
+- Use the fetcher script at [GrantScope/fetch/fetch.py](GrantScope/fetch/fetch.py) to retrieve data based on various filters
+- The fetcher includes rate limiting and error handling for reliable data retrieval
 
 ## Contributing
 We welcome contributions to enhance the Grant Analysis Dashboard. If you have any ideas, suggestions, or bug reports, please open an issue or submit a pull request. Let's collaborate to make this tool even more valuable for the grant analysis community!
