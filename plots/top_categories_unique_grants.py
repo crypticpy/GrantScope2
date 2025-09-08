@@ -6,11 +6,28 @@ import streamlit as st
 from utils.utils import download_excel, download_multi_sheet_excel, generate_page_prompt
 from utils.chat_panel import chat_panel
 from utils.app_state import set_selected_chart
+from config import is_enabled
+from utils.ai_explainer import render_ai_explainer
 
 
 def top_categories_unique_grants(df, grouped_df, selected_chart, selected_role, ai_enabled):
     if selected_chart == "Top Categories by Unique Grant Count":
         st.header("Top Categories by Unique Grant Count")
+
+        audience = "pro" if selected_role == "Grant Analyst/Writer" else "new"
+        if is_enabled("GS_ENABLE_PLAIN_HELPERS") and audience == "new":
+            st.info("""
+            What this page shows:
+            - Which categories have the most distinct grants
+
+            Why it matters:
+            - Points you to active areas with many opportunities
+
+            What to do next:
+            - Pick a category that matches your work
+            - Explore the grants list to see examples
+            """)
+
         st.write("""
         Welcome to the Top Categories by Unique Grant Count page! This interactive visualization allows you to explore the distribution of unique grant counts across different categorical variables.
 
@@ -58,6 +75,30 @@ def top_categories_unique_grants(df, grouped_df, selected_chart, selected_role, 
                              title=f"Treemap of Unique Grant Keys Across Top {top_n} Categories in {selected_categorical}")
 
         st.plotly_chart(fig)
+
+        # AI Explainer for top categories view
+        try:
+            additional_context = (
+                f"unique grant counts for top {int(top_n)} categories in {selected_categorical} "
+                f"rendered as a {chart_type.lower()} (sorted {sort_order.lower()})"
+            )
+            pre_prompt = generate_page_prompt(
+                df,
+                grouped_df,
+                selected_chart,
+                selected_role,
+                additional_context,
+                current_filters={
+                    "selected_categorical": selected_categorical,
+                    "top_n": int(top_n),
+                    "chart_type": chart_type,
+                    "sort_order": sort_order,
+                },
+                sample_df=normalized_counts.head(int(top_n)),
+            )
+            render_ai_explainer(normalized_counts.head(int(top_n)), pre_prompt, chart_id="top_categories.main", sample_df=normalized_counts.head(int(top_n)))
+        except Exception:
+            pass
 
         # Persist state for AI chart-state tool
         try:

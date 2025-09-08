@@ -1,7 +1,43 @@
 import os
+import json
+from datetime import datetime
+from dataclasses import dataclass, asdict
+from typing import Dict, Literal, Optional
 import streamlit as st
 from loaders.data_loader import load_data, preprocess_data
 from utils.utils import build_sample_grants_json, download_text
+
+# Type definitions for user profiles and experience levels
+ExperienceLevel = Literal["new", "some", "pro"]
+OrgType = Literal["nonprofit", "school", "business", "government", "other"]
+
+
+@dataclass
+class UserProfile:
+    """User profile containing preferences, experience level, and onboarding state."""
+    user_id: str
+    experience_level: ExperienceLevel
+    org_type: OrgType
+    primary_goal: str
+    region: str
+    newsletter_opt_in: bool
+    completed_onboarding: bool
+    created_at: datetime
+
+    def to_dict(self) -> Dict:
+        """Convert profile to dict for persistence."""
+        result = asdict(self)
+        result["created_at"] = self.created_at.isoformat()
+        return result
+
+    @classmethod
+    def from_dict(cls, data: Dict) -> "UserProfile":
+        """Create profile from dict, handling datetime conversion."""
+        data = data.copy()
+        if "created_at" in data and isinstance(data["created_at"], str):
+            data["created_at"] = datetime.fromisoformat(data["created_at"])
+        return cls(**data)
+
 
 # Centralized config for secrets/flags (supports package and direct execution contexts)
 try:
@@ -11,6 +47,42 @@ except Exception:
         import config  # fallback when executed inside GrantScope/ directly
     except Exception:
         config = None  # type: ignore
+
+
+def role_label(experience_level: ExperienceLevel) -> str:
+    """Convert experience level to user-facing label."""
+    labels = {
+        "new": "I'm new to grants",
+        "some": "I have some experience", 
+        "pro": "I'm a grant professional"
+    }
+    return labels[experience_level]
+
+
+def is_newbie(profile: Optional[UserProfile]) -> bool:
+    """Check if user profile indicates newbie status."""
+    if profile is None:
+        return True  # Default to newbie if no profile
+    return profile.experience_level == "new"
+
+
+def get_session_profile() -> Optional[UserProfile]:
+    """Get user profile from session state."""
+    try:
+        profile_data = st.session_state.get("user_profile")
+        if profile_data and isinstance(profile_data, dict):
+            return UserProfile.from_dict(profile_data)
+        return None
+    except Exception:
+        return None
+
+
+def set_session_profile(profile: UserProfile) -> None:
+    """Store user profile in session state."""
+    try:
+        st.session_state.user_profile = profile.to_dict()
+    except Exception:
+        pass  # Fail silently if session state unavailable
 
 
 def init_session_state():
@@ -26,21 +98,42 @@ def init_session_state():
         st.session_state.user_role = "Grant Analyst/Writer"
 
 
+def _map_experience_to_role(exp_level: str) -> str:
+    """Map experience level to legacy role labels used across pages."""
+    return "Grant Analyst/Writer" if exp_level == "pro" else "Normal Grant User"
+
+
 def sidebar_controls():
     """Render the shared sidebar controls and return (uploaded_file, selected_role, ai_enabled)."""
-    # Hide the default Streamlit multipage sidebar list to free space for the chat.
-    # This keeps only our compact dropdown-based navigation.
+    # Decide capabilities for navigation (compat across Streamlit versions)
+    has_switch = hasattr(st, "switch_page")
+    has_page_link = hasattr(st.sidebar, "page_link") or hasattr(st, "page_link")
+
+    # Hide the default Streamlit multipage sidebar list only if we have an alternative
     try:
-        st.sidebar.markdown(
-            "<style>div[data-testid='stSidebarNav'] { display: none; }</style>",
-            unsafe_allow_html=True,
-        )
+        if has_switch or has_page_link:
+            st.sidebar.markdown(
+                "<style>div[data-testid='stSidebarNav'] { display: none; }</style>",
+                unsafe_allow_html=True,
+            )
     except Exception:
         pass
 
     # Navigation dropdown (sidebar) — compact and navigates without callbacks
     try:
         st.sidebar.subheader("Navigate")
+        # Get profile to filter pages by experience level
+        profile = get_session_profile()
+        experience_level = profile.experience_level if profile else "new"
+
+        # Show profile summary when available (and feature flag enabled)
+        if config is not None and config.is_enabled("GS_ENABLE_NEWBIE_MODE") and profile:
+            try:
+                st.sidebar.markdown("**Experience:** " + role_label(experience_level))
+            except Exception:
+                pass
+        
+        # Base pages available to all users
         pages = {
             "Grant Advisor Interview": "0_Grant_Advisor_Interview.py",
             "Data Summary": "1_Data_Summary.py",
@@ -52,6 +145,28 @@ def sidebar_controls():
             "General Analysis of Relationships": "7_General_Analysis_of_Relationships.py",
             "Top Categories by Unique Grant Count": "8_Top_Categories_Unique_Grants.py",
         }
+        
+        # Add newbie-friendly pages if enabled
+        if config is not None and config.is_enabled("GS_ENABLE_NEW_PAGES"):
+            new_pages = {
+                "Project Planner": "9_Project_Planner.py",
+                "Timeline Advisor": "10_Timeline_Advisor.py",
+                "Success Stories": "11_Success_Stories.py",
+                "Budget Reality Check": "12_Budget_Reality_Check.py",
+            }
+            
+            # Filter pages based on experience level
+            if experience_level == "new":
+                # Newbies get all the helpful tools
+                pages.update(new_pages)
+            elif experience_level == "some":
+                # Experienced users get planning tools
+                pages.update({
+                    "Project Planner": "9_Project_Planner.py",
+                    "Timeline Advisor": "10_Timeline_Advisor.py",
+                    "Budget Reality Check": "12_Budget_Reality_Check.py",
+                })
+            # Pros don't get the guided pages by default
 
         page_labels = list(pages.keys())
         selected_label = st.sidebar.selectbox(
@@ -66,16 +181,32 @@ def sidebar_controls():
         prev = st.session_state.get("nav_prev_label")
         if selected_label != prev:
             st.session_state["nav_prev_label"] = selected_label
-            try:
-                if selected_label in pages:
-                    st.switch_page(f"pages/{pages[selected_label]}")
-            except Exception:
-                # Fallback for older Streamlit: render a page link for the selected target
+            # Primary path: switch_page if available
+            if has_switch and selected_label in pages:
                 try:
-                    if selected_label in pages:
-                        st.sidebar.page_link(f"pages/{pages[selected_label]}", label=f"Open: {selected_label}")
+                    st.switch_page(f"pages/{pages[selected_label]}")
                 except Exception:
                     pass
+
+        # Always render a direct link to the selected page if supported, as a robust fallback
+        if has_page_link and selected_label in pages:
+            try:
+                st.sidebar.page_link(f"pages/{pages[selected_label]}", label=f"Open: {selected_label}")
+            except Exception:
+                pass
+
+        # Optional: quick links to all pages when page_link exists
+        if has_page_link:
+            with st.sidebar.expander("Quick navigation", expanded=False):
+                for label, fname in pages.items():
+                    try:
+                        st.page_link(f"pages/{fname}", label=label)
+                    except Exception:
+                        # Some versions only support sidebar.page_link
+                        try:
+                            st.sidebar.page_link(f"pages/{fname}", label=label)
+                        except Exception:
+                            pass
     except Exception:
         # Navigation dropdown is optional; ignore failures on older Streamlit versions
         pass
@@ -124,15 +255,49 @@ def sidebar_controls():
             "or one-time input to enable AI-assisted analysis. Keys are never persisted."
         )
 
-    user_roles = ["Grant Analyst/Writer", "Normal Grant User"]
-    # Bind the selectbox to session state key for cross-page persistence
-    selected_role = st.sidebar.selectbox(
-        "Select User Role",
-        options=user_roles,
-        index=user_roles.index(st.session_state.get("user_role", user_roles[0])),
-        key="user_role",
-    )
+    # Determine selected_role based on profile if Newbie Mode is enabled
+    if config is not None and config.is_enabled("GS_ENABLE_NEWBIE_MODE"):
+        prof = get_session_profile()
+        if prof is not None:
+            selected_role = _map_experience_to_role(prof.experience_level)
+        else:
+            # Fallback to legacy selector if no profile yet
+            user_roles = ["Grant Analyst/Writer", "Normal Grant User"]
+            selected_role = st.sidebar.selectbox(
+                "Select User Role",
+                options=user_roles,
+                index=user_roles.index(st.session_state.get("user_role", user_roles[0])),
+                key="user_role",
+            )
+    else:
+        # Legacy role selector when Newbie Mode disabled
+        user_roles = ["Grant Analyst/Writer", "Normal Grant User"]
+        selected_role = st.sidebar.selectbox(
+            "Select User Role",
+            options=user_roles,
+            index=user_roles.index(st.session_state.get("user_role", user_roles[0])),
+            key="user_role",
+        )
 
+    # Add help/glossary access if enabled
+    if config is not None and config.is_enabled("GS_ENABLE_PLAIN_HELPERS"):
+        try:
+            from utils.help import render_glossary_search
+            render_glossary_search()
+        except Exception:
+            pass
+    
+    # Add reset onboarding button for testing/user preference
+    if config is not None and config.is_enabled("GS_ENABLE_NEWBIE_MODE") and profile:
+        st.sidebar.markdown("---")
+        if st.sidebar.button("🔄 Reset Setup", help="Start the setup process again"):
+            try:
+                from utils.onboarding import OnboardingWizard
+                OnboardingWizard.reset_onboarding()
+                st.rerun()
+            except Exception:
+                pass
+    
     # Flexible spacer to push the chat panel to the bottom of the sidebar viewport
     try:
         st.sidebar.markdown('<div class="gs-sidebar-spacer"></div>', unsafe_allow_html=True)

@@ -7,6 +7,8 @@ import streamlit as st
 from utils.utils import download_csv, download_excel, generate_page_prompt
 from utils.chat_panel import chat_panel
 from utils.app_state import set_selected_chart
+from config import is_enabled
+from utils.ai_explainer import render_ai_explainer
 
 
 def grant_amount_heatmap(df, grouped_df, selected_chart, selected_role, ai_enabled):
@@ -14,6 +16,21 @@ def grant_amount_heatmap(df, grouped_df, selected_chart, selected_role, ai_enabl
         return
 
     st.header("Grant Amount Heatmap")
+
+    audience = "pro" if selected_role == "Grant Analyst/Writer" else "new"
+    if is_enabled("GS_ENABLE_PLAIN_HELPERS") and audience == "new":
+        st.info("""
+        What this chart shows:
+        - Where two dimensions overlap (like Subject × Population)
+
+        Why it matters:
+        - Highlights high-impact intersections for your project
+
+        What to do next:
+        - Try different pairs of dimensions
+        - Note the strongest combinations that match your work
+        """)
+
     st.write(
         """
         Welcome to the Grant Amount Heatmap page! This interactive visualization allows you to explore the intersection of grant dimensions and identify meaningful funding patterns.
@@ -142,6 +159,17 @@ def grant_amount_heatmap(df, grouped_df, selected_chart, selected_role, ai_enabl
         )
 
         st.plotly_chart(fig, use_container_width=True)
+
+        # AI Explainer for heatmap
+        try:
+            additional_context = (
+                f"the intersection of {dimension1.split('_')[1]} and {dimension2.split('_')[1]} dimensions, "
+                f"filtered by selections on each axis"
+            )
+            pre_prompt = generate_page_prompt(df, grouped_df, selected_chart, selected_role, additional_context)
+            render_ai_explainer(filtered_df, pre_prompt, chart_id="heatmap.main", sample_df=filtered_df)
+        except Exception:
+            pass
 
         # Downloads in main column
         if st.button("Download Heatmap Data as Excel"):

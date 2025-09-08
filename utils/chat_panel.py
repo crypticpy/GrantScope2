@@ -156,6 +156,22 @@ def _chat_sidebar_anchor(state_key: str) -> None:
     st.markdown(f'<div class="chat-sidebar-anchor" id="chat-sidebar-{state_key}"></div>', unsafe_allow_html=True)
 
 
+def _audience_preface() -> str:
+    """Return a preface to guide the assistant tone based on user experience level."""
+    try:
+        from utils.app_state import get_session_profile  # deferred import
+        prof = get_session_profile()
+        if prof and getattr(prof, "experience_level", "new") == "new":
+            return (
+                "Explain like I'm new to grants. Use short sentences and plain language. "
+                "Give 3 clear next steps at the end."
+            )
+    except Exception:
+        pass
+    # Default: concise professional tone
+    return "Be concise and specific in your analysis."
+
+
 def chat_panel(df, pre_prompt: str, state_key: str, title: str = "AI Assistant"):
     """Render a chat panel with optional streaming + cancel support behind a feature flag."""
     # Select chat UI location based on env flag; default to sidebar
@@ -223,11 +239,39 @@ def chat_panel(df, pre_prompt: str, state_key: str, title: str = "AI Assistant")
             # Bottom-anchored input region
             with st.container():
                 st.markdown(f'<div class="gs-chat-input" id="gs-chat-input-{state_key}">', unsafe_allow_html=True)
+
+                # Starter prompts for newcomers
+                try:
+                    from utils.app_state import get_session_profile
+                    prof = get_session_profile()
+                    if prof and getattr(prof, "experience_level", "new") == "new":
+                        cols = st.columns(3)
+                        starters = [
+                            "What are my first 3 steps to get grant ready for this project?",
+                            "Am I eligible for typical funders for schools or nonprofits?",
+                            "Help me write a simple 1-paragraph need statement.",
+                        ]
+                        for i, c in enumerate(cols):
+                            with c:
+                                if st.button(f"✨ {i+1}", key=f"starter_{state_key}_{i}"):
+                                    st.session_state[f"chat_input_{state_key}"] = starters[i]
+                                    st.session_state[f"chat_autosend_{state_key}"] = True
+                                    st.rerun()
+                except Exception:
+                    pass
+
                 with st.form(key=f"chat_form_{state_key}", clear_on_submit=True):
                     user_input = st.text_input("Ask a question about this view…", key=f"chat_input_{state_key}")
                     submitted = st.form_submit_button("Send")
                 st.markdown('</div>', unsafe_allow_html=True)  # close gs-chat-input
                 st.markdown('</div>', unsafe_allow_html=True)  # close gs-chat-root
+
+        # Auto-send when a starter was clicked
+        autosend_key = f"chat_autosend_{state_key}"
+        if not submitted and st.session_state.get(autosend_key):
+            submitted = True
+            user_input = st.session_state.get(f"chat_input_{state_key}")
+            st.session_state[autosend_key] = False
 
         # Handle submit outside the layout containers so we don't render messages below the input
         if submitted and user_input:
@@ -242,7 +286,9 @@ def chat_panel(df, pre_prompt: str, state_key: str, title: str = "AI Assistant")
                 parts: list[str] = []
                 error_text: str | None = None
                 try:
-                    pre_prompt_eff = f"{pre_prompt} Additional Chart Context: {extra_ctx}" if extra_ctx else pre_prompt
+                    preface = _audience_preface()
+                    pre_prompt_user = f"{preface}\n\n{pre_prompt}".strip()
+                    pre_prompt_eff = f"{pre_prompt_user} Additional Chart Context: {extra_ctx}" if extra_ctx else pre_prompt_user
                     for delta in stream_query(df, user_input, pre_prompt_eff):
                         if st.session_state.get(cancel_key):
                             parts.append("\n\n[Cancelled by user]")
@@ -259,7 +305,8 @@ def chat_panel(df, pre_prompt: str, state_key: str, title: str = "AI Assistant")
                     if not final_answer:
                         # Fallback to non-streaming path if the stream produced no visible content
                         try:
-                            pre_prompt_eff = pre_prompt
+                            preface = _audience_preface()
+                            pre_prompt_eff = f"{preface}\n\n{pre_prompt}".strip()
                             fallback = tool_query(df, user_input, pre_prompt_eff, extra_ctx)
                             final_answer = fallback if str(fallback).strip() else "_No content produced._"
                         except Exception as e:
@@ -271,7 +318,8 @@ def chat_panel(df, pre_prompt: str, state_key: str, title: str = "AI Assistant")
             else:
                 with st.spinner("Thinking…"):
                     try:
-                        pre_prompt_eff = pre_prompt
+                        preface = _audience_preface()
+                        pre_prompt_eff = f"{preface}\n\n{pre_prompt}".strip()
                         answer = tool_query(df, user_input, pre_prompt_eff, extra_ctx)
                     except (RuntimeError, ValueError, Exception) as e:
                         answer = f"Sorry, I couldn't process that: {e}"

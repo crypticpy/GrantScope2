@@ -131,6 +131,10 @@ def feature_flags() -> Dict[str, bool]:
     return {
         "GS_ENABLE_CHAT_STREAMING": is_feature_enabled("GS_ENABLE_CHAT_STREAMING", False),
         "GS_ENABLE_LEGACY_ROUTER": is_feature_enabled("GS_ENABLE_LEGACY_ROUTER", False),
+        "GS_ENABLE_NEWBIE_MODE": is_feature_enabled("GS_ENABLE_NEWBIE_MODE", False),
+        "GS_ENABLE_PLAIN_HELPERS": is_feature_enabled("GS_ENABLE_PLAIN_HELPERS", False),
+        "GS_ENABLE_NEW_PAGES": is_feature_enabled("GS_ENABLE_NEW_PAGES", False),
+        "GS_ENABLE_AI_AUGMENTATION": is_feature_enabled("GS_ENABLE_AI_AUGMENTATION", False),
     }
 
 
@@ -143,6 +147,32 @@ def require(key_name: str, getter, hint: str) -> str:
     if not val:
         raise RuntimeError(f"Missing required configuration: {key_name}. {hint}")
     return str(val)
+
+
+def is_enabled(flag_name: str) -> bool:
+    """
+    Convenient alias for is_feature_enabled with default False.
+    """
+    return is_feature_enabled(flag_name, False)
+
+
+def require_flag(flag_name: str, ui_msg: str = "Feature is disabled") -> bool:
+    """
+    Check if a feature flag is enabled and show a user-friendly message if not.
+    Returns True if enabled, False if disabled.
+    Intended for UI contexts where st is available.
+    """
+    if is_enabled(flag_name):
+        return True
+    
+    # Try to show message via Streamlit if available
+    try:
+        import streamlit as st  # type: ignore
+        st.info(f"{ui_msg}. Set {flag_name}=1 to enable.")
+    except Exception:
+        pass
+    
+    return False
 
 
 def refresh_cache() -> None:
@@ -165,6 +195,8 @@ __all__ = [
     "get_candid_key",
     "get_model_name",
     "is_feature_enabled",
+    "is_enabled",
+    "require_flag",
     "feature_flags",
     "require",
     "refresh_cache",

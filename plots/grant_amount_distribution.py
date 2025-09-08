@@ -5,6 +5,8 @@ import pandas as pd
 from utils.utils import download_excel, download_csv, generate_page_prompt
 from utils.chat_panel import chat_panel
 from utils.app_state import set_selected_chart
+from config import is_enabled
+from utils.ai_explainer import render_ai_explainer
 
 
 def grant_amount_distribution(df, grouped_df, selected_chart, selected_role, ai_enabled):
@@ -27,6 +29,21 @@ def grant_amount_distribution(df, grouped_df, selected_chart, selected_role, ai_
 
     # Display the header and description
     st.header("Grant Amount Distribution w AI Chat")
+
+    audience = "pro" if selected_role == "Grant Analyst/Writer" else "new"
+    if is_enabled("GS_ENABLE_PLAIN_HELPERS") and audience == "new":
+        st.info("""
+        What this chart shows:
+        - How grant money is grouped into size buckets (USD clusters)
+
+        Why it matters:
+        - Helps you set a realistic budget for your first grant
+
+        What to do next:
+        - Pick a cluster that matches your project size
+        - Focus on funders that commonly award in that range
+        """)
+
     st.write("""
         Dive into the dynamic landscape of grant funding with our interactive distribution chart. This tool lets you visualize how grants are dispersed across various USD clusters, offering a clear view of funding trends and concentrations. Select different clusters to tailor the data shown and discover patterns at a glance.
         """)
@@ -112,6 +129,37 @@ def grant_amount_distribution(df, grouped_df, selected_chart, selected_role, ai_
     if log_y:
         fig.update_yaxes(type='log')
     st.plotly_chart(fig, use_container_width=True)
+
+    # AI Explainer for distribution chart
+    try:
+        additional_context = "the distribution of grant amounts across USD clusters"
+        pre_prompt = generate_page_prompt(
+            df,
+            grouped_df,
+            selected_chart,
+            selected_role,
+            additional_context,
+            current_filters={
+                "metric": metric,
+                "top_n": int(top_n),
+                "log_y": bool(log_y),
+                "sort_dir": sort_dir,
+            },
+            sample_df=filtered_df,
+        )
+        render_ai_explainer(filtered_df, pre_prompt, chart_id="distribution.main", sample_df=filtered_df)
+    except Exception:
+        pass
+
+    # Smart recommendations panel
+    try:
+        from utils.recommendations import GrantRecommender
+        context = {
+            "selected_clusters": st.session_state.get("dist_selected_clusters"),
+        }
+        GrantRecommender.render_panel(filtered_df, context)
+    except Exception:
+        pass
 
     if ai_enabled:
         # Sidebar chat selector (single option on this page)

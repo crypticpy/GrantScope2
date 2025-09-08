@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import streamlit as st
 from typing import Any, cast
+from config import is_enabled
 try:  # optional dependency; available via transitive deps but handle gracefully
     from sklearn.feature_extraction.text import TfidfVectorizer  # type: ignore
     TFIDF_AVAILABLE = True
@@ -22,6 +23,7 @@ except ImportError:  # pragma: no cover - optional dependency
 from utils.utils import download_excel, generate_page_prompt
 from utils.chat_panel import chat_panel
 from utils.app_state import set_selected_chart
+from utils.ai_explainer import render_ai_explainer
 
 
 def grant_description_word_clouds(df, grouped_df, selected_chart, selected_role, ai_enabled):
@@ -30,6 +32,21 @@ def grant_description_word_clouds(df, grouped_df, selected_chart, selected_role,
         return
 
     st.header("Grant Description Word Clouds")
+
+    audience = "pro" if selected_role == "Grant Analyst/Writer" else "new"
+    if is_enabled("GS_ENABLE_PLAIN_HELPERS") and audience == "new":
+        st.info("""
+        What this page shows:
+        - Common words in your grant descriptions
+
+        Why it matters:
+        - Helps you write clearly and avoid filler words
+
+        What to do next:
+        - Remove buzzwords from your descriptions
+        - Keep strong, specific words that match funder interests
+        """)
+
     st.write(
         """
         Welcome to the Grant Description Word Clouds page! This page provides insights into the most common words found in the grant descriptions.
@@ -190,6 +207,16 @@ def grant_description_word_clouds(df, grouped_df, selected_chart, selected_role,
                 list(stopwords),
             )
         st.image(png, caption="Word Cloud for Entire Dataset")
+
+        # AI Explainer for word cloud (entire dataset)
+        try:
+            from utils.utils import generate_page_prompt
+            additional_context = "the most common words found in grant descriptions"
+            pre_prompt = generate_page_prompt(df, grouped_df, selected_chart, selected_role, additional_context)
+            render_ai_explainer(grouped_df, pre_prompt, chart_id="wordclouds.main")
+        except Exception:
+            pass
+
         st.download_button(
             "Download PNG",
             data=png,

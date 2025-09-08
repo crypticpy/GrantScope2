@@ -4,6 +4,8 @@ import streamlit as st
 from utils.utils import download_excel, generate_page_prompt
 from utils.app_state import set_selected_chart
 from utils.chat_panel import chat_panel
+from config import is_enabled
+from utils.ai_explainer import render_ai_explainer
 
 
 def treemaps_extended_analysis(df, grouped_df, selected_chart, selected_role, ai_enabled):
@@ -13,6 +15,21 @@ def treemaps_extended_analysis(df, grouped_df, selected_chart, selected_role, ai
         st.header("Treemaps by Subject, Population and Strategy")
         # Single selector per page: set chart id for downstream chat context
         set_selected_chart("treemaps.main")
+
+        audience = "pro" if selected_role == "Grant Analyst/Writer" else "new"
+        if is_enabled("GS_ENABLE_PLAIN_HELPERS") and audience == "new":
+            st.info("""
+            What this page shows:
+            - How funding is split across categories
+
+            Why it matters:
+            - Helps you see which areas get the most support
+
+            What to do next:
+            - Pick the category that best fits your project
+            - Focus your search on top categories for your USD range
+            """)
+
         st.write("""
         Welcome to the Treemaps with Extended Analysis page! This interactive visualization allows you to explore the distribution of grant amounts across different subjects, populations, and strategies using dynamic treemaps.
 
@@ -57,7 +74,23 @@ def treemaps_extended_analysis(df, grouped_df, selected_chart, selected_role, ai
             options=grouped_data[analyze_column].astype(str).unique().tolist(),
         )
 
-        st.plotly_chart(fig)
+        st.plotly_chart(fig, use_container_width=True)
+
+        # AI Explainer for treemap view
+        try:
+            additional_context = f"treemaps by {analyze_column} for USD range '{selected_label}'"
+            pre_prompt = generate_page_prompt(
+                df,
+                grouped_df,
+                selected_chart,
+                selected_role,
+                additional_context,
+                current_filters={"analyze_column": analyze_column, "selected_label": selected_label},
+                sample_df=grouped_data,
+            )
+            render_ai_explainer(grouped_data, pre_prompt, chart_id="treemaps.main", sample_df=grouped_data)
+        except Exception:
+            pass
 
         if ai_enabled:
             # Sidebar chat selector (single option on this page)
@@ -86,6 +119,26 @@ def treemaps_extended_analysis(df, grouped_df, selected_chart, selected_role, ai
             )
         else:
             st.info("AI-assisted analysis is disabled. Please provide an API key to enable this feature.")
+
+        # Smart recommendations panel based on treemap selection
+        try:
+            from utils.recommendations import GrantRecommender
+            context = {
+                "analyze_column": analyze_column,
+                "selected_label": selected_label,
+                "page": "treemaps"
+            }
+            recommender = GrantRecommender(filtered_data)
+            recs = recommender.data_first(context)
+            
+            # Show recommendations if we have any
+            if recs:
+                st.subheader("💡 Smart Recommendations")
+                for i, rec in enumerate(recs[:3]):
+                    with st.expander(f"💡 {rec.title}", expanded=i == 0):
+                        st.write(rec.reason)
+        except Exception:
+            pass
 
         if selected_block:
             block_grants = filtered_data[filtered_data[analyze_column] == selected_block]

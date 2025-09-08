@@ -4,12 +4,29 @@ import streamlit as st
 from utils.utils import download_csv, generate_page_prompt
 from utils.chat_panel import chat_panel
 from utils.app_state import set_selected_chart
+from config import is_enabled
+from utils.ai_explainer import render_ai_explainer
 
 
 def general_analysis_relationships(df, _grouped_df, selected_chart, _selected_role, _ai_enabled):
     if selected_chart != "General Analysis of Relationships":
         return
     st.header("General Analysis of Relationships")
+
+    audience = "pro" if _selected_role == "Grant Analyst/Writer" else "new"
+    if is_enabled("GS_ENABLE_PLAIN_HELPERS") and audience == "new":
+        st.info("""
+        What this page shows:
+        - How different factors relate to award amounts
+
+        Why it matters:
+        - Helps you refine your project and choose stronger angles
+
+        What to do next:
+        - Try different factors like subject and population
+        - Use the insights to shape your proposal
+        """)
+
     st.write("""
         Welcome to the General Analysis of Relationships page! This section of the GrantScope application is designed to help you uncover meaningful connections and trends within the grant data. By exploring the relationships between various factors and the award amount, you can gain valuable insights to inform your grant-related decisions.
 
@@ -28,7 +45,7 @@ def general_analysis_relationships(df, _grouped_df, selected_chart, _selected_ro
                      title="Grant Description Length vs. Award Amount")
     fig.update_layout(xaxis_title='Number of Words in Grant Description', yaxis_title='Award Amount (USD)',
                       width=800, height=600)
-    st.plotly_chart(fig)
+    st.plotly_chart(fig, use_container_width=True)
 
     st.subheader("Average Award Amount by Different Factors")
     st.write(
@@ -62,7 +79,23 @@ def general_analysis_relationships(df, _grouped_df, selected_chart, _selected_ro
         fig.update_layout(xaxis_title=selected_factor, yaxis_title='Award Amount (USD)', width=800, height=600,
                           boxmode='group')
 
-    st.plotly_chart(fig)
+    st.plotly_chart(fig, use_container_width=True)
+
+    # AI Explainer for average by factor or box plot
+    try:
+        additional_context = f"average award amount by the selected factor '{selected_factor}' using a {chart_type}"
+        pre_prompt = generate_page_prompt(
+            df,
+            _grouped_df,
+            selected_chart,
+            _selected_role,
+            additional_context,
+            current_filters={"selected_factor": selected_factor, "chart_type": chart_type},
+            sample_df=avg_amount_by_factor,
+        )
+        render_ai_explainer(avg_amount_by_factor, pre_prompt, chart_id="relationships.avg_by_factor", sample_df=avg_amount_by_factor)
+    except Exception:
+        pass
 
     st.subheader("Funder Affinity Analysis")
     st.write("Analyze the affinity of a specific funder towards certain subjects, populations, or strategies.")
@@ -81,7 +114,26 @@ def general_analysis_relationships(df, _grouped_df, selected_chart, _selected_ro
     fig.update_layout(xaxis_title=selected_affinity_factor, yaxis_title='Total Award Amount (USD)', width=800,
                       height=600,
                       xaxis_tickangle=-45, xaxis_tickfont=dict(size=10))
-    st.plotly_chart(fig)
+    st.plotly_chart(fig, use_container_width=True)
+
+    # AI Explainer for funder affinity
+    try:
+        additional_context = f"funder affinity analysis for '{selected_funder}' across '{selected_affinity_factor}'"
+        pre_prompt = generate_page_prompt(
+            df,
+            _grouped_df,
+            selected_chart,
+            _selected_role,
+            additional_context,
+            current_filters={
+                "selected_funder": selected_funder,
+                "selected_affinity_factor": selected_affinity_factor,
+            },
+            sample_df=funder_affinity,
+        )
+        render_ai_explainer(funder_affinity, pre_prompt, chart_id="relationships.funder_affinity", sample_df=funder_affinity)
+    except Exception:
+        pass
 
     # Persist relationships state for chart-state tool
     try:
@@ -161,6 +213,27 @@ def general_analysis_relationships(df, _grouped_df, selected_chart, _selected_ro
                 state_key="relationships_chat",
                 title="Relationships — AI Assistant",
             )
+
+    # Smart recommendations panel based on selected factors
+    try:
+        from utils.recommendations import GrantRecommender
+        context = {
+            "selected_factor": selected_factor,
+            "selected_funder": selected_funder,
+            "selected_affinity_factor": selected_affinity_factor,
+            "page": "relationships"
+        }
+        recommender = GrantRecommender(unique_grants_df)
+        recs = recommender.data_first(context)
+        
+        # Show recommendations if we have any
+        if recs:
+            st.subheader("💡 Smart Recommendations")
+            for i, rec in enumerate(recs[:3]):
+                with st.expander(f"💡 {rec.title}", expanded=i == 0):
+                    st.write(rec.reason)
+    except Exception:
+        pass
 
     st.write("""
         We hope that this General Analysis of Relationships page helps you uncover valuable insights and trends within the grant data. If you have any questions or need further assistance, please don't hesitate to reach out.

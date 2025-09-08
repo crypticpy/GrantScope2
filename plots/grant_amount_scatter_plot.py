@@ -5,6 +5,8 @@ import streamlit as st
 from utils.chat_panel import chat_panel
 from utils.utils import download_csv, generate_page_prompt
 from utils.app_state import set_selected_chart
+from config import is_enabled
+from utils.ai_explainer import render_ai_explainer
 
 
 def grant_amount_scatter_plot(df, grouped_df, selected_chart, selected_role, ai_enabled):
@@ -12,6 +14,21 @@ def grant_amount_scatter_plot(df, grouped_df, selected_chart, selected_role, ai_
         return
 
     st.header("Grant Amount Scatter Plot")
+
+    audience = "pro" if selected_role == "Grant Analyst/Writer" else "new"
+    if is_enabled("GS_ENABLE_PLAIN_HELPERS") and audience == "new":
+        st.info("""
+        What this chart shows:
+        - How grant amounts change over the years
+
+        Why it matters:
+        - Helps you time your applications and set expectations
+
+        What to do next:
+        - Pick a year range and clusters that match your project
+        - Look for years with more activity in your cluster
+        """)
+
     st.write(
         """
         Welcome to the Grant Amount Scatter Plot page! This AI interactive visualization allows you to explore the distribution of grant amounts over time with support from GPT-5.
@@ -120,6 +137,17 @@ def grant_amount_scatter_plot(df, grouped_df, selected_chart, selected_role, ai_
     if log_y:
         fig.update_yaxes(type='log')
     st.plotly_chart(fig, use_container_width=True)
+
+    # AI Explainer for scatter chart
+    try:
+        additional_context = (
+            f"the distribution of grant amounts over time, filtered by USD clusters ({', '.join(map(str, selected_clusters))}) "
+            f"and year range ({start_year} to {end_year})"
+        )
+        pre_prompt = generate_page_prompt(df, grouped_df, selected_chart, selected_role, additional_context)
+        render_ai_explainer(filtered_df, pre_prompt, chart_id="scatter.main", sample_df=filtered_df)
+    except Exception:
+        pass
     # Persist current scatter filter state for AI chart-state tool
     try:
         st.session_state["scatter_start_year"] = int(start_year)

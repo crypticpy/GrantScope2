@@ -1,6 +1,8 @@
 import os
 import streamlit as st
-from utils.app_state import init_session_state, sidebar_controls
+from utils.app_state import init_session_state, sidebar_controls, get_session_profile, set_session_profile
+from utils.onboarding import OnboardingWizard
+from config import is_enabled
 
 
 st.set_page_config(page_title="GrantScope", page_icon=":chart_with_upwards_trend:")
@@ -109,12 +111,32 @@ def main() -> None:
         legacy_main()
         return
 
+    # Check if we need to show onboarding for newbie mode
+    profile = get_session_profile()
+    if is_enabled("GS_ENABLE_NEWBIE_MODE") and (profile is None or not profile.completed_onboarding):
+        wizard = OnboardingWizard()
+        new_profile, completed = wizard.render(profile)
+        if completed and new_profile:
+            set_session_profile(new_profile)
+            st.success("Setup complete! Welcome to GrantScope.")
+            st.balloons()
+            # Give user a moment to see success message, then rerun to show main app
+            if st.button("Continue to Dashboard"):
+                st.rerun()
+        return
+
     # Multipage landing: keep it light; shared state lives in utils/app_state.py and individual pages
     st.title("GrantScope Dashboard")
-    st.info(
-        "Multipage navigation is enabled. Use the page selector in the left sidebar to explore "
-        "Data Summary, Distribution, Scatter, Heatmap, Word Clouds, Treemaps, Relationships, and more."
-    )
+    
+    # Show user info if available
+    if profile and profile.completed_onboarding:
+        from utils.app_state import role_label
+        st.info(f"Welcome back! You're set up as: {role_label(profile.experience_level)}")
+    else:
+        st.info(
+            "Multipage navigation is enabled. Use the page selector in the left sidebar to explore "
+            "Data Summary, Distribution, Scatter, Heatmap, Word Clouds, Treemaps, Relationships, and more."
+        )
 
     # Render shared sidebar so uploads/role are centralized and persist via st.session_state
     sidebar_controls()

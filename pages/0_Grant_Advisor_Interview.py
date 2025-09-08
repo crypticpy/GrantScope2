@@ -14,6 +14,8 @@ from utils.app_state import (  # type: ignore
     get_data,
 )
 from utils.utils import download_text  # type: ignore
+from utils.app_state import get_session_profile  # type: ignore
+from utils.app_state import is_newbie  # type: ignore
 
 # Flexible imports for the Advisor package (prefer local repo modules, fallback to package)
 try:
@@ -200,6 +202,26 @@ def render_interview_page() -> None:
     df, grouped_df, err = get_data(uploaded_file)
 
     st.title("Grant Advisor Interview")
+
+    # Newbie-friendly overlay
+    try:
+        profile = get_session_profile()
+        if is_newbie(profile):
+            with st.expander("👋 What you'll get from this interview", expanded=True):
+                st.markdown("""
+                - A simple project summary in plain English
+                - A short list of potential funders to research
+                - Clear next steps to get grant-ready
+                """)
+            st.success("""
+            Quick checklist before you start:
+            1) Know your rough budget and timeline
+            2) List who benefits and how
+            3) Have a short description of your project
+            """)
+    except Exception:
+        pass
+
     # Runtime notice for users about potential analysis duration
     st.info(
         "Heads up: The Advisor analysis may take up to ~5 minutes on first run. "
@@ -242,32 +264,49 @@ def render_interview_page() -> None:
     st.subheader("Interview")
     with st.form(key="advisor_interview_form", clear_on_submit=False):
         fvals: Dict[str, Any] = dict(st.session_state.get("advisor_form") or {})
-        program_area = st.text_input("Program Area", value=fvals.get("program_area", ""))
+
+        # For newcomers: explain each field inline
+        try:
+            profile = get_session_profile()
+            newbie = is_newbie(profile)
+        except Exception:
+            newbie = True
+
+        program_area = st.text_input("Program Area", value=fvals.get("program_area", ""),
+                                     help=("What is your project about? (e.g., after-school program, food pantry)" if newbie else None))
         populations_txt = st.text_input(
-            "Populations (comma-separated)", value=", ".join(fvals.get("populations", []))
+            "Populations (comma-separated)", value=", ".join(fvals.get("populations", [])),
+            help=("Who will benefit? (e.g., middle school students, seniors, veterans)" if newbie else None)
         )
         geography_txt = st.text_input(
-            "Geography (comma-separated region/state/country)", value=", ".join(fvals.get("geography", []))
+            "Geography (comma-separated region/state/country)", value=", ".join(fvals.get("geography", [])),
+            help=("Where does the project take place? (e.g., California, NYC)" if newbie else None)
         )
         timeframe_years = st.number_input(
-            "Timeframe (years, optional)", min_value=0, max_value=10, value=int(fvals.get("timeframe_years") or 0)
+            "Timeframe (years, optional)", min_value=0, max_value=10, value=int(fvals.get("timeframe_years") or 0),
         )
         budget_range_txt = st.text_input(
-            "Budget USD Range (min,max optional)", value=", ".join(map(str, fvals.get("budget_usd_range", []))) or ""
+            "Budget USD Range (min,max optional)", value=", ".join(map(str, fvals.get("budget_usd_range", []))) or "",
+            help=("Example: 10000, 50000 (if unsure, start with a small range)" if newbie else None)
         )
         outcomes_txt = st.text_input(
-            "Outcomes (comma-separated)", value=", ".join(fvals.get("outcomes", []))
+            "Outcomes (comma-separated)", value=", ".join(fvals.get("outcomes", [])),
+            help=("What changes will happen because of this project?" if newbie else None)
         )
         constraints_txt = st.text_input(
-            "Constraints (comma-separated)", value=", ".join(fvals.get("constraints", []))
+            "Constraints (comma-separated)", value=", ".join(fvals.get("constraints", [])),
+            help=("What might be hard? (e.g., staffing, timeline)" if newbie else None)
         )
         funder_types_txt = st.text_input(
-            "Preferred Funder Types (comma-separated)", value=", ".join(fvals.get("preferred_funder_types", []))
+            "Preferred Funder Types (comma-separated)", value=", ".join(fvals.get("preferred_funder_types", [])),
+            help=("Examples: foundations, corporations, government" if newbie else None)
         )
         keywords_txt = st.text_input(
-            "Keywords (comma-separated)", value=", ".join(fvals.get("keywords", []))
+            "Keywords (comma-separated)", value=", ".join(fvals.get("keywords", [])),
+            help=("Important words for your project (e.g., STEM, literacy)" if newbie else None)
         )
-        notes = st.text_area("Notes", value=fvals.get("notes", ""))
+        notes = st.text_area("Notes", value=fvals.get("notes", ""),
+                             help=("Any extra context you'd like to add" if newbie else None))
         # Bind to global selected role for consistency
         user_role = selected_role
 
@@ -306,6 +345,24 @@ def render_interview_page() -> None:
                 
         render_report_streamlit(st.session_state["advisor_last_bundle"])
         st.stop()
+
+    # Mini action plan for newbies (client-side, quick guidance)
+    try:
+        profile = get_session_profile()
+        if is_newbie(profile):
+            st.subheader("🗺️ Mini Action Plan")
+            bullets = []
+            if program_area:
+                bullets.append(f"Write a 1-paragraph summary of your project in {program_area}.")
+            if geography_txt:
+                bullets.append(f"List 3–5 local funders that support work in {geography_txt}.")
+            if budget_range_txt:
+                bullets.append("Pick a realistic budget range and find funders with similar awards.")
+            bullets.append("Collect basic documents: org overview, simple budget, timeline.")
+            for b in bullets[:5]:
+                st.markdown(f"- {b}")
+    except Exception:
+        pass
 
     # Normal run path
     # Background execution and live progress rendering

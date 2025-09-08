@@ -5,6 +5,9 @@ import streamlit as st
 from utils.utils import generate_page_prompt
 from utils.chat_panel import chat_panel
 from utils.app_state import set_selected_chart
+from config import is_enabled
+from utils.help import render_help
+from utils.ai_explainer import render_ai_explainer
 
 
 def data_summary(df, grouped_df, selected_chart, selected_role, ai_enabled):
@@ -14,6 +17,22 @@ def data_summary(df, grouped_df, selected_chart, selected_role, ai_enabled):
         return
 
     st.header("Introduction")
+
+    # Audience detection for helpers
+    audience = "pro" if selected_role == "Grant Analyst/Writer" else "new"
+    if is_enabled("GS_ENABLE_PLAIN_HELPERS") and audience == "new":
+        st.info("""
+        What this page shows:
+        - The big picture of your grant data
+        - Who gives money, who receives it, and which topics get funded
+        - Simple charts to spot patterns fast
+
+        What to do next:
+        - Note the top funders and subjects
+        - Compare these to your project focus and location
+        - Click the checkboxes to see the numbers behind each chart
+        """)
+
     st.markdown(
         """
         Welcome to the GrantScope Tool! This powerful prototype application was built by [Christopher Collins](https://www.linkedin.com/in/cctopher/) to assist grant writers and analysts in navigating and extracting insights from a complex grant dataset. By leveraging the capabilities AI integrated with this tool, you can identify potential funding opportunities, analyze trends, and gain valuable information.
@@ -57,7 +76,35 @@ def data_summary(df, grouped_df, selected_chart, selected_role, ai_enabled):
         title=f"Top {top_n} Funders by Total Grant Amount",
     )
     fig.update_layout(xaxis_title="Funder Name", yaxis_title="Total Grant Amount (USD)")
-    st.plotly_chart(fig)
+    st.plotly_chart(fig, use_container_width=True)
+
+    # AI Explainer for Top Funders chart
+    try:
+        from utils.utils import generate_page_prompt
+        additional_context = f"the top {top_n} funders by total grant amount"
+        pre_prompt = generate_page_prompt(
+            df,
+            grouped_df,
+            selected_chart,
+            selected_role,
+            additional_context,
+            current_filters={"top_n": int(top_n)},
+            sample_df=top_funders,
+        )
+        render_ai_explainer(top_funders, pre_prompt, chart_id="data_summary.top_funders", sample_df=top_funders)
+    except Exception:
+        pass
+
+    if is_enabled("GS_ENABLE_PLAIN_HELPERS") and audience == "new":
+        st.success("""
+        Why this matters:
+        - These are the funders that give the most in your data
+        - If your project matches their focus, they may be good targets
+
+        Next steps:
+        - Click "Show Top Funders Data Table" to see their names
+        - Write down 3–5 funders to research
+        """)
 
     # Defer AI chat rendering; consolidated into a single chat panel with context selector below.
     if not ai_enabled:
@@ -65,6 +112,13 @@ def data_summary(df, grouped_df, selected_chart, selected_role, ai_enabled):
 
     if st.checkbox("Show Top Funders Data Table"):
         st.write(top_funders)
+
+    # Smart recommendations panel
+    try:
+        from utils.recommendations import GrantRecommender
+        GrantRecommender.render_panel(unique_df)
+    except Exception:
+        pass
 
     st.subheader("Grant Distribution by Funder Type")
     funder_type_dist = unique_df.groupby("funder_type")["amount_usd"].sum().reset_index()
@@ -87,7 +141,7 @@ def data_summary(df, grouped_df, selected_chart, selected_role, ai_enabled):
     fig = px.pie(
         top_categories, values="amount_usd", names="funder_type", title="Grant Distribution by Funder Type"
     )
-    st.plotly_chart(fig)
+    st.plotly_chart(fig, use_container_width=True)
 
     # Display the table for the "Other" category if it exists
     if len(funder_type_dist) > 12 and funder_type_dist_sorted is not None:
@@ -95,6 +149,21 @@ def data_summary(df, grouped_df, selected_chart, selected_role, ai_enabled):
         # Get the rows that were aggregated into "Other"
         other_details = funder_type_dist_sorted.iloc[11:].reset_index(drop=True)
         st.dataframe(other_details.style.format({"amount_usd": "{:,.2f}"}))
+
+    # AI Explainer for Funder Type Distribution
+    try:
+        pre_prompt = generate_page_prompt(
+            df,
+            grouped_df,
+            selected_chart,
+            selected_role,
+            "grant distribution by funder type (pie chart)",
+            current_filters=None,
+            sample_df=top_categories,
+        )
+        render_ai_explainer(top_categories, pre_prompt, chart_id="data_summary.funder_type", sample_df=top_categories)
+    except Exception:
+        pass
 
     if st.checkbox("Show Funder Type Data Table"):
         st.write(funder_type_dist)
@@ -111,7 +180,22 @@ def data_summary(df, grouped_df, selected_chart, selected_role, ai_enabled):
         title="Top 10 Grant Subject Areas by Total Amount",
     )
     fig.update_layout(xaxis_title="Subject Area", yaxis_title="Total Grant Amount (USD)")
-    st.plotly_chart(fig)
+    st.plotly_chart(fig, use_container_width=True)
+
+    # AI Explainer for Subject Areas
+    try:
+        pre_prompt = generate_page_prompt(
+            df,
+            grouped_df,
+            selected_chart,
+            selected_role,
+            "top 10 grant subject areas by total amount",
+            current_filters=None,
+            sample_df=subject_dist,
+        )
+        render_ai_explainer(subject_dist, pre_prompt, chart_id="data_summary.subject_areas", sample_df=subject_dist)
+    except Exception:
+        pass
 
     st.subheader("Grant Distribution by Population Served")
     population_dist = (
@@ -125,7 +209,22 @@ def data_summary(df, grouped_df, selected_chart, selected_role, ai_enabled):
         title="Top 10 Populations Served by Total Grant Amount",
     )
     fig.update_layout(xaxis_title="Population Served", yaxis_title="Total Grant Amount (USD)")
-    st.plotly_chart(fig)
+    st.plotly_chart(fig, use_container_width=True)
+
+    # AI Explainer for Population Served
+    try:
+        pre_prompt = generate_page_prompt(
+            df,
+            grouped_df,
+            selected_chart,
+            selected_role,
+            "top 10 populations served by total grant amount",
+            current_filters=None,
+            sample_df=population_dist,
+        )
+        render_ai_explainer(population_dist, pre_prompt, chart_id="data_summary.population_served", sample_df=population_dist)
+    except Exception:
+        pass
 
     if ai_enabled:
         # Sidebar chat selector to keep the center content clean
