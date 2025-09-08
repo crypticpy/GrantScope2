@@ -10,13 +10,17 @@ from typing import Any, Dict, List, Optional, Tuple, Literal
 import hashlib
 import json as _json
 
-from pydantic import BaseModel, Field
 try:
-    from pydantic import ConfigDict  # type: ignore
-    _P2 = True
-except ImportError:  # pydantic v1
-    ConfigDict = None  # type: ignore
-    _P2 = False
+    from pydantic import BaseModel, Field
+    try:
+        from pydantic import ConfigDict  # type: ignore
+        _P2 = True
+    except Exception:  # pydantic v1
+        ConfigDict = None  # type: ignore
+        _P2 = False
+except Exception as e:
+    # Pydantic is required for Advisor models
+    raise
 
 
 class _BaseModel(BaseModel):
@@ -51,7 +55,7 @@ class InterviewInput(_BaseModel):
     def model_as_dict(self) -> Dict[str, Any]:
         try:
             return self.model_dump(mode="json")  # pydantic v2
-        except AttributeError:
+        except Exception:
             return self.dict()  # pydantic v1
 
     def stable_hash(self) -> str:
@@ -169,7 +173,7 @@ class ReportBundle(_BaseModel):
     def to_json(self) -> str:
         try:
             data = self.model_dump(mode="json")
-        except AttributeError:
+        except Exception:
             data = self.dict()
         return _json_dumps_stable(data)
 
@@ -179,10 +183,11 @@ class ReportBundle(_BaseModel):
         return cls(**data)
 
 # Ensure a single module identity for schemas regardless of import path
-from contextlib import suppress as _suppress  # type: ignore
-with _suppress(Exception):
+try:
     import sys as _sys  # type: ignore
     _mod = _sys.modules.get(__name__)
     if _mod is not None:
         _sys.modules.setdefault("advisor.schemas", _mod)
         _sys.modules.setdefault("GrantScope.advisor.schemas", _mod)
+except Exception:
+    pass

@@ -1,7 +1,8 @@
 """Live progress tracking UI components for the grant advisor pipeline."""
 
 import streamlit as st
-from typing import Dict, Optional
+from typing import Dict, List, Optional
+from datetime import datetime
 import threading
 from advisor.pipeline.progress import get_progress_state  # type: ignore
 
@@ -70,7 +71,10 @@ STAGES = [
 
 def get_stage_info(backend_name: str) -> Optional[Dict]:
     """Map backend progress messages to stage info."""
-    return next((s for s in STAGES if s["backend_name"] in backend_name), None)
+    for stage in STAGES:
+        if stage["backend_name"] in backend_name:
+            return stage
+    return None
 
 
 def create_progress_callback(report_id: str) -> callable:
@@ -78,10 +82,23 @@ def create_progress_callback(report_id: str) -> callable:
     
     def update_progress(stage_index: int, status: str, message: str = "") -> None:
         """Update the progress state in session_state."""
-        from contextlib import suppress
-        with suppress(Exception):
+        try:
             with _LOCK:
-                _ = (report_id, stage_index, status, message)
+                progress_key = f"advisor_progress_{report_id}"
+                progress_data = st.session_state.get(progress_key, {})
+                
+                progress_data.update({
+                    "current_stage": stage_index,
+                    "status": status,  # 'running', 'completed', 'error'
+                    "message": message,
+                    "timestamp": datetime.utcnow().isoformat(),
+                })
+                
+                st.session_state[progress_key] = progress_data
+            
+        except Exception:
+            # Don't let progress updates break the pipeline
+            pass
     
     return update_progress
 
@@ -161,6 +178,8 @@ def render_minimal_progress(report_id: str) -> None:
 
 def cleanup_progress_state(report_id: str) -> None:
     """Clean up progress state after completion."""
-    from contextlib import suppress
-    with suppress(Exception):
-        _ = report_id
+    try:
+        # No-op with new store (cleanup handled in pipeline.progress)
+        pass
+    except Exception:
+        pass

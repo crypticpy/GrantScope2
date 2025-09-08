@@ -46,7 +46,7 @@ def grant_amount_heatmap(df, grouped_df, selected_chart, selected_role, ai_enabl
     # Two columns: main content (wide) and right chat (narrow)
     # Give the heatmap more room. If AI chat is disabled, use full width.
     if ai_enabled:
-        col_main, col_chat = st.columns([16, 3], gap="large")
+        col_main, col_chat = st.columns([12, 3], gap="large")
     else:
         col_main = st.container()
         col_chat = None

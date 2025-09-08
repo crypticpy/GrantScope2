@@ -1,11 +1,12 @@
 from datetime import datetime
+import streamlit as st
 from typing import Optional, Dict, Any, List
 import threading
 
 _LOCK = threading.Lock()
 _PROGRESS_STATE: Dict[str, Dict[str, Any]] = {}
 _PROGRESS_LOGS: Dict[str, List[str]] = {}
-_REPORT_STORE: Dict[str, "ReportBundle"] = {}
+_REPORT_STORE: Dict[str, ReportBundle] = {}
 
 from .imports import ReportBundle
 

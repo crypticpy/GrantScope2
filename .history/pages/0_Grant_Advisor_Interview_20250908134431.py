@@ -408,7 +408,10 @@ def render_interview_page() -> None:
             # Background thread to run pipeline (no Streamlit calls inside)
             def _run_pipeline_bg():
                 try:
-                    # Invoke pipeline; progress updates occur via internal callbacks/store
+                    # Provide a progress callback that writes to the thread-safe store
+                    cb = create_progress_callback(report_id)
+                    # run_interview_pipeline already uses create_progress_callback internally,
+                    # so simply invoking it will update the store via orchestrator.
                     rpt = run_interview_pipeline(interview, df_nonnull2)
                     # Persist result into the store for retrieval on UI thread
                     from advisor.pipeline.progress import _REPORT_STORE, _LOCK  # type: ignore

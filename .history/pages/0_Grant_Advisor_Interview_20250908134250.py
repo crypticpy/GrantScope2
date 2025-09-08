@@ -38,7 +38,7 @@ try:
         # cleanup_progress_state,
     )
     from advisor.ui_progress import STAGES  # type: ignore
-    from advisor.pipeline.progress import get_progress_state, get_report  # type: ignore
+    from advisor.pipeline.progress import get_progress_state, get_report, create_progress_callback  # type: ignore
 except Exception:
     from GrantScope.advisor.schemas import InterviewInput  # type: ignore
     from GrantScope.advisor.pipeline import run_interview_pipeline  # type: ignore
@@ -59,7 +59,7 @@ except Exception:
         # cleanup_progress_state,
     )
     from GrantScope.advisor.ui_progress import STAGES  # type: ignore
-    from GrantScope.advisor.pipeline.progress import get_progress_state, get_report  # type: ignore
+    from GrantScope.advisor.pipeline.progress import get_progress_state, get_report, create_progress_callback  # type: ignore
 
 
 st.set_page_config(page_title="GrantScope — Grant Advisor Interview", page_icon=":memo:")
@@ -408,18 +408,22 @@ def render_interview_page() -> None:
             # Background thread to run pipeline (no Streamlit calls inside)
             def _run_pipeline_bg():
                 try:
-                    # Invoke pipeline; progress updates occur via internal callbacks/store
+                    # Provide a progress callback that writes to the thread-safe store
+                    cb = create_progress_callback(report_id)
+                    # run_interview_pipeline already uses create_progress_callback internally,
+                    # so simply invoking it will update the store via orchestrator.
                     rpt = run_interview_pipeline(interview, df_nonnull2)
                     # Persist result into the store for retrieval on UI thread
-                    from advisor.pipeline.progress import _REPORT_STORE, _LOCK  # type: ignore
-                    with _LOCK:
+                    from advisor.pipeline.progress import _REPORT_STORE  # type: ignore
+                    with __import__("threading").Lock():
                         _REPORT_STORE[report_id] = rpt
                 except Exception as e:
-                    from advisor.pipeline.progress import _PROGRESS_STATE, _LOCK  # type: ignore
-                    with _LOCK:
-                        st_err = str(e)
-                        state = _PROGRESS_STATE.setdefault(report_id, {})
-                        state.update({"status": "error", "message": st_err})
+                    from advisor.pipeline.progress import _PROGRESS_STATE  # type: ignore
+                    with __import__("threading").Lock():
+                        st.session_state["advisor_error"] = str(e)
+                        _PROGRESS_STATE.setdefault(report_id, {}).update({"status": "error"})
+                finally:
+                    st.session_state["advisor_run_in_progress"] = False
             
             if not st.session_state.get("advisor_run_in_progress"):
                 st.session_state["advisor_run_in_progress"] = True
@@ -434,7 +438,7 @@ def render_interview_page() -> None:
                 render_live_progress_tracker(report_id, show_estimates=True)
             
             state = get_progress_state(report_id)
-            if st.session_state.get("advisor_run_in_progress") and state.get("status") not in {"completed", "error"}:
+            if st.session_state.get("advisor_run_in_progress") and state.get("status") != "completed":
                 last = st.session_state.get("advisor_last_refresh_ts", 0.0)
                 now = time.time()
                 # Throttle reruns to ~1.5s
@@ -445,11 +449,8 @@ def render_interview_page() -> None:
             else:
                 # Clear progress placeholder and show completion or error
                 progress_placeholder.empty()
-                # mark not in progress
-                st.session_state["advisor_run_in_progress"] = False
-                if state.get("status") == "error":
-                    err_msg = state.get("message") or "Pipeline error"
-                    st.error(f"Pipeline error: {err_msg}")
+                if st.session_state.get("advisor_error"):
+                    st.error(f"Pipeline error: {st.session_state['advisor_error']}")
                     report = None
                 else:
                     st.success("✅ Analysis complete!")

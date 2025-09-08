@@ -13,53 +13,57 @@ from utils.app_state import (  # type: ignore
     sidebar_controls,
     get_data,
 )
-# from utils.utils import download_text  # type: ignore
+from utils.utils import download_text  # type: ignore
 from utils.app_state import get_session_profile  # type: ignore
 from utils.app_state import is_newbie  # type: ignore
 
 # Flexible imports for the Advisor package (prefer local repo modules, fallback to package)
 try:
-    from advisor.schemas import InterviewInput  # type: ignore
+    from advisor.schemas import InterviewInput, ReportBundle  # type: ignore
     from advisor.pipeline import run_interview_pipeline  # type: ignore
     from advisor.renderer import (  # type: ignore
         render_report_streamlit,
-        # render_report_html,
+        render_report_html,
     )
     from advisor.persist import (  # type: ignore
+        export_bundle,
         import_bundle_from_upload,
     )
     from advisor.demo import (  # type: ignore
+        get_demo_interview,
         get_demo_responses_dict,
         load_demo_responses_json,
     )
     from advisor.ui_progress import (  # type: ignore
         render_live_progress_tracker,
-        # render_minimal_progress,
-        # cleanup_progress_state,
+        render_minimal_progress,
+        cleanup_progress_state,
     )
     from advisor.ui_progress import STAGES  # type: ignore
-    from advisor.pipeline.progress import get_progress_state, get_report  # type: ignore
+    from advisor.pipeline.progress import get_progress_state, get_report, create_progress_callback  # type: ignore
 except Exception:
-    from GrantScope.advisor.schemas import InterviewInput  # type: ignore
+    from GrantScope.advisor.schemas import InterviewInput, ReportBundle  # type: ignore
     from GrantScope.advisor.pipeline import run_interview_pipeline  # type: ignore
     from GrantScope.advisor.renderer import (  # type: ignore
         render_report_streamlit,
-        # render_report_html,
+        render_report_html,
     )
     from GrantScope.advisor.persist import (  # type: ignore
+        export_bundle,
         import_bundle_from_upload,
     )
     from GrantScope.advisor.demo import (  # type: ignore
+        get_demo_interview,
         get_demo_responses_dict,
         load_demo_responses_json,
     )
     from GrantScope.advisor.ui_progress import (  # type: ignore
         render_live_progress_tracker,
-        # render_minimal_progress,
-        # cleanup_progress_state,
+        render_minimal_progress,
+        cleanup_progress_state,
     )
     from GrantScope.advisor.ui_progress import STAGES  # type: ignore
-    from GrantScope.advisor.pipeline.progress import get_progress_state, get_report  # type: ignore
+    from GrantScope.advisor.pipeline.progress import get_progress_state, get_report, create_progress_callback  # type: ignore
 
 
 st.set_page_config(page_title="GrantScope — Grant Advisor Interview", page_icon=":memo:")
@@ -405,21 +409,15 @@ def render_interview_page() -> None:
             
             _analysis_start_toast()
             
-            # Background thread to run pipeline (no Streamlit calls inside)
+            # Background thread to run pipeline
             def _run_pipeline_bg():
                 try:
-                    # Invoke pipeline; progress updates occur via internal callbacks/store
                     rpt = run_interview_pipeline(interview, df_nonnull2)
-                    # Persist result into the store for retrieval on UI thread
-                    from advisor.pipeline.progress import _REPORT_STORE, _LOCK  # type: ignore
-                    with _LOCK:
-                        _REPORT_STORE[report_id] = rpt
+                    st.session_state["advisor_last_bundle"] = rpt
+                    st.session_state["advisor_run_in_progress"] = False
                 except Exception as e:
-                    from advisor.pipeline.progress import _PROGRESS_STATE, _LOCK  # type: ignore
-                    with _LOCK:
-                        st_err = str(e)
-                        state = _PROGRESS_STATE.setdefault(report_id, {})
-                        state.update({"status": "error", "message": st_err})
+                    st.session_state["advisor_error"] = str(e)
+                    st.session_state["advisor_run_in_progress"] = False
             
             if not st.session_state.get("advisor_run_in_progress"):
                 st.session_state["advisor_run_in_progress"] = True
@@ -433,8 +431,7 @@ def render_interview_page() -> None:
             with progress_placeholder:
                 render_live_progress_tracker(report_id, show_estimates=True)
             
-            state = get_progress_state(report_id)
-            if st.session_state.get("advisor_run_in_progress") and state.get("status") not in {"completed", "error"}:
+            if st.session_state.get("advisor_run_in_progress"):
                 last = st.session_state.get("advisor_last_refresh_ts", 0.0)
                 now = time.time()
                 # Throttle reruns to ~1.5s
@@ -445,16 +442,12 @@ def render_interview_page() -> None:
             else:
                 # Clear progress placeholder and show completion or error
                 progress_placeholder.empty()
-                # mark not in progress
-                st.session_state["advisor_run_in_progress"] = False
-                if state.get("status") == "error":
-                    err_msg = state.get("message") or "Pipeline error"
-                    st.error(f"Pipeline error: {err_msg}")
+                if st.session_state.get("advisor_error"):
+                    st.error(f"Pipeline error: {st.session_state['advisor_error']}")
                     report = None
                 else:
                     st.success("✅ Analysis complete!")
-                    # Retrieve report from store if available, fallback to session
-                    report = get_report(report_id) or st.session_state.get("advisor_last_bundle")
+                    report = st.session_state.get("advisor_last_bundle")
             render_report_streamlit(report)
             st.success("Analysis complete. See tabs above for details and downloads.")
 

@@ -1,11 +1,12 @@
 from datetime import datetime
+import streamlit as st
 from typing import Optional, Dict, Any, List
 import threading
 
 _LOCK = threading.Lock()
 _PROGRESS_STATE: Dict[str, Dict[str, Any]] = {}
 _PROGRESS_LOGS: Dict[str, List[str]] = {}
-_REPORT_STORE: Dict[str, "ReportBundle"] = {}
+_REPORT_STORE: Dict[str, ReportBundle] = {}
 
 from .imports import ReportBundle
 
@@ -71,8 +72,10 @@ STAGES = [
 
 def get_stage_info(backend_name: str) -> Optional[Dict]:
     """Map backend progress messages to stage info."""
-    lowered = backend_name.lower()
-    return next((s for s in STAGES if s["backend_name"].lower() in lowered), None)
+    for stage in STAGES:
+        if stage["backend_name"].lower() in backend_name.lower():
+            return stage
+    return None
 
 
 def create_progress_callback(report_id: str) -> callable:
@@ -101,13 +104,11 @@ def _push_progress(report_id: str, message: str) -> None:
         logs.append(f"[{datetime.utcnow().isoformat()}Z] {message}")
 
         # Stage inference from message
-        # Lazy resolve stage mapping; tolerate absence during early import
-        stage_info: Optional[Dict]
         try:
-            from advisor.ui_progress import get_stage_info as _ui_get_stage_info  # type: ignore
-            stage_info = _ui_get_stage_info(message)
-        except ImportError:
-            stage_info = get_stage_info(message)
+            from advisor.ui_progress import get_stage_info  # lazy import
+            stage_info = get_stage_info(message)  # type: ignore
+        except Exception:
+            stage_info = None
 
         state = _PROGRESS_STATE.get(report_id, {})
         # Do not override completed/error

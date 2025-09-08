@@ -188,51 +188,51 @@ def _get_starter_prompts(chart_id: str | None = None) -> list[str]:
                 starters_by_chart: dict[str, list[str]] = {
                     # Grant Amount Distribution (histogram/bins)
                     "distribution": [
-                        "What grant sizes are most common here? Give a simple range.",
-                        "What grant amount would be a realistic ask for my project?",
-                        "Are there a few very big grants that make the chart look bigger than it really is?",
+                        "Which grant sizes are most common in this dataset?",
+                        "What is the typical grant amount and spread (e.g., median and IQR)?",
+                        "Are there outliers or heavy tails that we should treat carefully?",
                     ],
                     # Scatter over time or two numeric axes
                     "scatter": [
-                        "Are grants getting bigger or smaller over the years?",
-                        "Which years look best for getting funded in this view?",
-                        "Show 5 big grants and simple clues for why they might have won.",
+                        "How have grant amounts changed over time in this view?",
+                        "Which time periods show unusual spikes in very large grants?",
+                        "Show the top 5 largest grants here and any patterns they share.",
                     ],
                     # Heatmap of categories vs categories
                     "heatmap": [
-                        "Which topics and groups get the most money together?",
-                        "Where do you see gaps we could fill with our program?",
-                        "If I change filters to schools or nonprofits, what changes most?",
+                        "Which category combinations show the highest total funding?",
+                        "Where are the gaps or underfunded areas in this heatmap?",
+                        "Which cells changed the most when I adjust filters on this page?",
                     ],
                     # Word clouds of descriptions
                     "wordclouds": [
-                        "What plain words show up most in grant descriptions here?",
-                        "Give 5 helpful words I can use in my project summary.",
-                        "Are there buzzwords or vague words I should avoid?",
+                        "What themes appear most often in grant descriptions here?",
+                        "Compare top terms across two key categories I should focus on.",
+                        "Are there buzzwords or jargon we should avoid in proposals?",
                     ],
                     # Treemaps by category hierarchy
                     "treemaps": [
-                        "Which areas get the largest share of money? Explain in simple terms.",
-                        "What small niches look promising for a new or after‑school program?",
-                        "Suggest 3 focus areas from this treemap to start my funder search.",
+                        "Which branches drive the largest share of total funding?",
+                        "Where are small but promising niches with steady growth?",
+                        "Suggest 3 focus areas from this treemap for my project.",
                     ],
                     # Relationships page: multiple derived charts
                     "relationships": [
-                        "What simple patterns here explain who gets larger grants?",
-                        "Do certain funders prefer our topic or the people we serve?",
-                        "Give 3 easy takeaways I can use in my proposal or outreach.",
+                        "Which factors correlate with higher grant amounts in this view?",
+                        "Do certain funders favor particular subjects or populations?",
+                        "What practical insights should I act on from these relationships?",
                     ],
                     # Top categories by unique grants
                     "top_categories": [
-                        "Which categories have the most grants?",
-                        "Which areas have many small grants that are good for beginners?",
-                        "Where should I start my funder search based on this list?",
+                        "Which categories have the highest number of unique grants?",
+                        "Which categories are count-heavy but low in total dollars?",
+                        "What niches show many small grants that fit beginners like us?",
                     ],
                     # Data summary landing page
                     "data_summary": [
-                        "Who are the top funders in this data, in simple terms?",
-                        "What years are most active for awards here?",
-                        "Give 3 quick facts I can share with my team to guide our search.",
+                        "Who are the top funders and how concentrated is funding?",
+                        "What time range does the data cover and any notable trends?",
+                        "Which segments dominate by count versus total dollars?",
                     ],
                 }
                 if chart_prefix in starters_by_chart:

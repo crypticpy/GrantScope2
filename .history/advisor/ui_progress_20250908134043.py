@@ -1,7 +1,8 @@
 """Live progress tracking UI components for the grant advisor pipeline."""
 
 import streamlit as st
-from typing import Dict, Optional
+from typing import Dict, List, Optional
+from datetime import datetime
 import threading
 from advisor.pipeline.progress import get_progress_state  # type: ignore
 
@@ -78,10 +79,12 @@ def create_progress_callback(report_id: str) -> callable:
     
     def update_progress(stage_index: int, status: str, message: str = "") -> None:
         """Update the progress state in session_state."""
-        from contextlib import suppress
-        with suppress(Exception):
+        try:
             with _LOCK:
+                # Legacy no-op: state now tracked in pipeline.progress store
                 _ = (report_id, stage_index, status, message)
+        except Exception:
+            pass
     
     return update_progress
 

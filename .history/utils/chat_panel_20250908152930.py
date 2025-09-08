@@ -172,8 +172,8 @@ def _audience_preface() -> str:
     return "Be concise and specific in your analysis."
 
 
-def _get_starter_prompts(chart_id: str | None = None) -> list[str]:
-    """Return newbie-friendly starter prompts tailored to the current chart page.
+def _get_starter_prompts() -> list[str]:
+    """Return newbie-friendly starter prompts, or empty list for experienced users.
 
     This helper is imported by tests to validate prompt quality and is used by the
     chat UI to present a dropdown of starter questions for newcomers.
@@ -182,63 +182,6 @@ def _get_starter_prompts(chart_id: str | None = None) -> list[str]:
         from utils.app_state import get_session_profile  # deferred import
         prof = get_session_profile()
         if prof and getattr(prof, "experience_level", "new") == "new":
-            # Chart-specific starters for chart pages only
-            if chart_id:
-                chart_prefix = str(chart_id).split(".", 1)[0]
-                starters_by_chart: dict[str, list[str]] = {
-                    # Grant Amount Distribution (histogram/bins)
-                    "distribution": [
-                        "What grant sizes are most common here? Give a simple range.",
-                        "What grant amount would be a realistic ask for my project?",
-                        "Are there a few very big grants that make the chart look bigger than it really is?",
-                    ],
-                    # Scatter over time or two numeric axes
-                    "scatter": [
-                        "Are grants getting bigger or smaller over the years?",
-                        "Which years look best for getting funded in this view?",
-                        "Show 5 big grants and simple clues for why they might have won.",
-                    ],
-                    # Heatmap of categories vs categories
-                    "heatmap": [
-                        "Which topics and groups get the most money together?",
-                        "Where do you see gaps we could fill with our program?",
-                        "If I change filters to schools or nonprofits, what changes most?",
-                    ],
-                    # Word clouds of descriptions
-                    "wordclouds": [
-                        "What plain words show up most in grant descriptions here?",
-                        "Give 5 helpful words I can use in my project summary.",
-                        "Are there buzzwords or vague words I should avoid?",
-                    ],
-                    # Treemaps by category hierarchy
-                    "treemaps": [
-                        "Which areas get the largest share of money? Explain in simple terms.",
-                        "What small niches look promising for a new or after‑school program?",
-                        "Suggest 3 focus areas from this treemap to start my funder search.",
-                    ],
-                    # Relationships page: multiple derived charts
-                    "relationships": [
-                        "What simple patterns here explain who gets larger grants?",
-                        "Do certain funders prefer our topic or the people we serve?",
-                        "Give 3 easy takeaways I can use in my proposal or outreach.",
-                    ],
-                    # Top categories by unique grants
-                    "top_categories": [
-                        "Which categories have the most grants?",
-                        "Which areas have many small grants that are good for beginners?",
-                        "Where should I start my funder search based on this list?",
-                    ],
-                    # Data summary landing page
-                    "data_summary": [
-                        "Who are the top funders in this data, in simple terms?",
-                        "What years are most active for awards here?",
-                        "Give 3 quick facts I can share with my team to guide our search.",
-                    ],
-                }
-                if chart_prefix in starters_by_chart:
-                    return starters_by_chart[chart_prefix]
-
-            # Fallback generic starters (non-chart pages)
             return [
                 "What are my first 3 steps to get grant ready for this project?",
                 "Am I eligible for typical funders for schools or nonprofits?",
@@ -319,37 +262,23 @@ def chat_panel(df, pre_prompt: str, state_key: str, title: str = "AI Assistant")
 
                 # Starter prompts for newcomers — presented as a dropdown
                 try:
-                    starters = _get_starter_prompts(chart_id)
+                    starters = _get_starter_prompts()
                     if starters:
-                        label_text = "Unsure what to ask — select a starter"
+                        sentinel = "Unsure what to ask — select a starter"
                         select_key = f"starter_select_{state_key}"
-                        prev_choice = st.session_state.get(select_key)
-                        try:
-                            # Prefer modern API with placeholder and no default selection
-                            choice = st.selectbox(
-                                label_text,
-                                options=starters,
-                                key=select_key,
-                                index=None,  # type: ignore[arg-type]
-                                placeholder=label_text,  # type: ignore[call-arg]
-                            )
-                        except TypeError:
-                            # Fallback for older Streamlit versions without placeholder/index=None
-                            choice = st.selectbox(
-                                label_text,
-                                options=starters,
-                                key=select_key,
-                            )
-
-                        init_key = f"starter_initialized_{state_key}"
-                        was_initialized = bool(st.session_state.get(init_key, False))
-                        if not was_initialized:
-                            st.session_state[init_key] = True
-
-                        # Trigger autosend only when the user changes the selection
-                        if choice and was_initialized and choice != prev_choice:
+                        # Ensure a default value exists only once per session
+                        if select_key not in st.session_state:
+                            st.session_state[select_key] = sentinel
+                        choice = st.selectbox(
+                            sentinel,
+                            options=[sentinel] + starters,
+                            key=select_key,
+                        )
+                        if choice and choice != sentinel:
                             st.session_state[f"chat_input_{state_key}"] = choice
                             st.session_state[f"chat_autosend_{state_key}"] = True
+                            # Reset dropdown so it doesn't trigger repeatedly on rerun
+                            st.session_state[select_key] = sentinel
                             st.rerun()
                 except Exception:
                     pass
