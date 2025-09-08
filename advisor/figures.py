@@ -9,6 +9,12 @@ from __future__ import annotations
 
 from typing import Any, Iterable
 
+# Use centralized normalization for consistent filtering between metrics and figures
+try:
+    from GrantScope.advisor.normalization import _apply_needs_filters  # type: ignore
+except Exception:  # pragma: no cover
+    from advisor.normalization import _apply_needs_filters  # type: ignore
+
 import pandas as pd
 
 # Plotly import with defensive fallback to avoid hard failures during tests
@@ -47,6 +53,14 @@ def _ensure_plotly() -> None:
         raise RuntimeError("plotly is not available. Install plotly to render Advisor figures.")
 
 
+def _has_field(df: pd.DataFrame, col: str, min_nonnull_ratio: float = 0.01) -> bool:
+    """Return True if a column exists and has at least a minimal fraction of non-null values."""
+    try:
+        return (col in df.columns) and (df[col].notna().mean() >= min_nonnull_ratio)
+    except Exception:
+        return col in df.columns
+
+
 def _safe_copy_df(df: pd.DataFrame) -> pd.DataFrame:
     try:
         return df.copy()
@@ -55,41 +69,15 @@ def _safe_copy_df(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def _filter_by_needs(df: pd.DataFrame, needs) -> pd.DataFrame:
-    """Optionally filter the dataframe using StructuredNeeds cues.
+    """Apply the same normalization filter used by metrics to keep figures consistent.
 
-    We keep this conservative to avoid empty plots on small samples.
-    - If needs.subjects present and 'grant_subject_tran' exists, keep rows having any subject token.
-    - If needs.geographies present and 'grant_geo_area_tran' exists, keep rows matching any geo token.
+    This delegates to advisor.normalization._apply_needs_filters, which expands tokens
+    (e.g., tx->Texas/Austin; education->Education services) and gracefully degrades if
+    filters would eliminate all rows.
     """
     try:
-        out = _safe_copy_df(df)
-        # Subjects
-        try:
-            subjects = list(getattr(needs, "subjects", []) or [])
-        except Exception:
-            subjects = []
-        if subjects and "grant_subject_tran" in out.columns:
-            sub_tokens = {str(s).strip().lower() for s in subjects if str(s).strip()}
-            if sub_tokens:
-                mask = out["grant_subject_tran"].astype(str).str.lower().apply(
-                    lambda v: any(tok in v for tok in sub_tokens)
-                )
-                if mask.any():
-                    out = out[mask]
-        # Geographies
-        try:
-            geos = list(getattr(needs, "geographies", []) or [])
-        except Exception:
-            geos = []
-        if geos and "grant_geo_area_tran" in out.columns:
-            geo_tokens = {str(g).strip().lower() for g in geos if str(g).strip()}
-            if geo_tokens:
-                mask = out["grant_geo_area_tran"].astype(str).str.lower().apply(
-                    lambda v: any(tok in v for tok in geo_tokens)
-                )
-                if mask.any():
-                    out = out[mask]
-        return out
+        filtered, _used = _apply_needs_filters(df, needs)
+        return filtered
     except Exception:
         return df
 
@@ -131,7 +119,7 @@ def _prep_time_trend(df: pd.DataFrame, needs) -> pd.DataFrame:
     """Deterministic prep: sum of amounts by year_issued."""
     data = _filter_by_needs(df, needs)
     if "year_issued" not in data.columns or "amount_usd" not in data.columns:
-        return pd.DataFrame({"year_issued": ["N/A"], "amount_usd": [0.0]})
+        return pd.DataFrame({"year_issued": [], "amount_usd": []})
     try:
         yrs = pd.to_numeric(data["year_issued"], errors="coerce")
         tmp = data.copy()

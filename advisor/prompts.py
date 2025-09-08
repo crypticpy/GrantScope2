@@ -92,7 +92,12 @@ def stage1_normalize_user(interview_dict: dict[str, Any]) -> str:
 
 
 def stage2_plan_user(needs: dict[str, Any]) -> str:
-    """User message for Stage 2: produce an AnalysisPlan with whitelisted tool calls only."""
+    """User message for Stage 2: produce an AnalysisPlan with whitelisted tool calls only.
+
+    IMPORTANT: Use canonical values from the dataset, not shorthand codes like 'tx'/'us'.
+    When filtering, prefer terms that actually appear in columns such as grant_subject_tran,
+    grant_population_tran, and grant_geo_area_tran (e.g., 'Education services', 'Austin').
+    """
     tools = ", ".join(WHITELISTED_TOOLS)
     return dedent(
         f"""
@@ -113,7 +118,9 @@ def stage2_plan_user(needs: dict[str, Any]) -> str:
         8. Funder-Subject Analysis: "df_pivot_table" with index=["funder_name"], columns=["grant_subject_tran"], value="amount_usd"
         
         Additional Guidance:
-        - Use descriptive titles like "Top Funders by Total Amount", "Subject Area Distribution", "Geographic Funding Patterns"
+        - Use descriptive titles like "Top Funders by Total Amount", "Subject Area Distribution", etc.
+        - Use ONLY values present in the dataset for filters. Do NOT use shorthand codes like 'tx' or 'us'; use canonical names like 'Austin' or 'Texas' that exist in the data.
+        - If a requested filter would produce no rows, skip or relax it.
         - For groupby operations, use n=10-15 to get meaningful samples
         - Include both amount-based and count-based analyses where applicable
         - Ensure geographic analysis covers all location data in the dataset

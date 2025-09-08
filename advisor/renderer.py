@@ -74,6 +74,50 @@ def _clean_interpretation_text(text: str, for_markdown: bool = True) -> str:
     return t
 
 
+_def_md_specials = r"([\\`*_{}\[\]()#+\-\.!|>])"
+
+
+def _clean_narrative_md(text: str) -> str:
+    """
+    Sanitize narrative Markdown while preserving headings and lists.
+    - Normalize Unicode and whitespace similar to interpretation text
+    - Escape underscores that sit between word characters to avoid accidental italics
+    - Add spaces after commas and around dashes when missing
+    - Insert spaces between digits and letters if jammed together (e.g., 50000or -> 50000 or)
+    """
+    try:
+        t = unicodedata.normalize("NFKC", str(text))
+    except Exception:
+        t = str(text)
+
+    # NBSP variants to normal spaces
+    t = t.replace("\u00A0", " ").replace("\u202F", " ")
+
+    # Do NOT force spaces after commas inside numbers; only add a space after a comma when the next char is non-digit and non-space
+    t = re.sub(r",(?=\S)(?=[^0-9])", ", ", t)
+
+    # Avoid altering dashes around words; leave as-is to prevent odd spacing
+
+    # Escape dollar signs to prevent LaTeX rendering in Streamlit
+    t = re.sub(r"\$", r"\\$", t)
+    
+    # Escape underscores/asterisks between word chars to prevent accidental markdown italics/bold
+    t = re.sub(r"(?<=\w)_(?=\w)", r"\\_", t)
+    t = re.sub(r"(?<=\w)\*(?=\w)", r"\\*", t)
+
+    # Insert spaces between digits and letters when glued
+    t = re.sub(r"(?<=\d)(?=[A-Za-z])", " ", t)
+    t = re.sub(r"(?<=[A-Za-z])(?=\d)", " ", t)
+    # Also split common jammed phrases like 'orless' and 'themedianwas' heuristically
+    t = re.sub(r"\borless\b", "or less", t)
+    t = re.sub(r"\bthemedianwas\b", "the median was", t)
+
+    # Collapse excess whitespace
+    t = re.sub(r"\s+", " ", t).strip()
+
+    return t
+
+
 def _figure_html(fig: FigureArtifact) -> str:
     """Return HTML for a figure artifact, using PNG if available else inline HTML string."""
     if fig.png_base64:
@@ -206,6 +250,7 @@ def render_report_html(report: ReportBundle) -> str:
         parts.append("<h2>Narrative</h2>")
         for sec in report.sections[1:]:
             parts.append(f"<h3>{escape(sec.title)}</h3>")
+            # Keep raw markdown body in HTML export to preserve intended formatting
             parts.append(sec.markdown_body)
         parts.append("</div>")
 
@@ -218,14 +263,18 @@ def render_report_streamlit(report: ReportBundle) -> None:
     if st is None:  # pragma: no cover
         return
 
-    tab_overview, tab_evidence, tab_recs, tab_downloads = st.tabs(
-        ["Overview", "Data Evidence", "Recommendations", "Downloads"]
+    tab_overview, tab_evidence, tab_recs, tab_narrative, tab_downloads = st.tabs(
+        ["Overview", "Data Evidence", "Recommendations", "Narrative", "Downloads"]
     )
 
     with tab_overview:
         st.subheader("Overview")
         if report.sections:
-            st.markdown(report.sections[0].markdown_body)
+            try:
+                cleaned_overview = _clean_narrative_md(report.sections[0].markdown_body)
+            except Exception:
+                cleaned_overview = report.sections[0].markdown_body
+            st.markdown(cleaned_overview)
         else:
             st.info("No overview available.")
 
@@ -247,7 +296,10 @@ def render_report_streamlit(report: ReportBundle) -> None:
                 try:
                     text2 = getattr(fig, "interpretation_text", None)
                     if text2:
-                        cleaned = _clean_interpretation_text(str(text2))
+                        try:
+                            cleaned = _clean_narrative_md(str(text2))
+                        except Exception:
+                            cleaned = _clean_interpretation_text(str(text2))
                         st.markdown(f"**What this means:** {cleaned}")
                 except Exception:
                     pass
@@ -260,9 +312,17 @@ def render_report_streamlit(report: ReportBundle) -> None:
             for dp in report.datapoints:
                 st.markdown(f"**{dp.id} — {dp.title}**")
                 if dp.table_md:
-                    st.markdown(dp.table_md)
+                    try:
+                        cleaned_table = _clean_narrative_md(dp.table_md)
+                    except Exception:
+                        cleaned_table = dp.table_md
+                    st.markdown(cleaned_table)
                 if dp.notes:
-                    st.caption(dp.notes)
+                    try:
+                        cleaned_notes = _clean_narrative_md(dp.notes)
+                    except Exception:
+                        cleaned_notes = dp.notes
+                    st.caption(cleaned_notes)
 
     with tab_recs:
         st.subheader("Recommendations")
@@ -272,17 +332,41 @@ def render_report_streamlit(report: ReportBundle) -> None:
         else:
             if recs.funder_candidates:
                 st.markdown("##### Funder Candidates")
-                for fc in recs.funder_candidates[:5]:
-                    st.markdown(f"- **{fc.name}** (score {fc.score:.2f}): {fc.rationale}")
+                # Show up to 10, prioritizing more context for users
+                for fc in recs.funder_candidates[:10]:
+                    try:
+                        cleaned_name = _clean_narrative_md(fc.name)
+                        cleaned_rationale = _clean_narrative_md(fc.rationale)
+                    except Exception:
+                        cleaned_name = fc.name
+                        cleaned_rationale = fc.rationale
+                    st.markdown(f"- **{cleaned_name}** (score {fc.score:.2f}): {cleaned_rationale}")
             else:
                 st.caption("No funder candidates.")
 
             if recs.response_tuning:
                 st.markdown("##### Response Tuning")
-                for tip in recs.response_tuning[:5]:
-                    st.markdown(f"- {tip.text}")
+                for tip in recs.response_tuning[:10]:
+                    try:
+                        cleaned_tip = _clean_narrative_md(tip.text)
+                    except Exception:
+                        cleaned_tip = tip.text
+                    st.markdown(f"- {cleaned_tip}")
             else:
                 st.caption("No tuning tips.")
+
+    with tab_narrative:
+        st.subheader("Narrative")
+        if report.sections and len(report.sections) > 1:
+            for sec in report.sections[1:]:
+                st.markdown(f"### {sec.title}")
+                try:
+                    cleaned_body = _clean_narrative_md(sec.markdown_body)
+                except Exception:
+                    cleaned_body = sec.markdown_body
+                st.markdown(cleaned_body)
+        else:
+            st.info("No narrative sections available.")
 
     with tab_downloads:
         st.subheader("Downloads")

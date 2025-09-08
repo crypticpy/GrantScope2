@@ -261,7 +261,7 @@ def run_interview_pipeline(interview: InterviewInput, df: pd.DataFrame) -> Repor
     # Stage 6: Figures and finalize bundle
     _push_progress(report_id, "Stage 6: Building figures and finalizing")
     progress_callback(6, 'running', 'Creating final report')
-    figures = _figures_default(df, interview, needs)
+    figures = _figures_default(df_for_metrics, interview, needs)
 
     if intake_summary:
         sections.insert(

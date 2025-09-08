@@ -5,7 +5,7 @@ import pandas as pd
 from .imports import (
     StructuredNeeds, MetricRequest, DataPoint,
     generate_page_prompt, resolve_chart_context, tool_query,
-    _canonical_value_samples,
+    _canonical_value_samples, _apply_needs_filters,
 )
 from .json_utils import _json_dumps_stable
 from .ids import _stable_dp_id
@@ -86,6 +86,67 @@ def _build_pre_prompt(df: pd.DataFrame, interview: Any) -> str:
         pass
     return pre
 
+def _is_no_match(text: str) -> bool:
+    try:
+        s = (text or "").strip().lower()
+    except Exception:
+        s = ""
+    if not s:
+        return True
+    needles = [
+        "no matching records",
+        "no data available",
+        "empty",
+    ]
+    return any(n in s for n in needles)
+
+
+def _metric_targeted_focus(df: pd.DataFrame, needs: StructuredNeeds, top_n: int = 25) -> str:
+    """Programmatic fallback for targeted focus when SQL yields nothing.
+
+    Returns a compact Markdown table of subject x population with total amount and count.
+    """
+    try:
+        df_f, _used = _apply_needs_filters(df, needs)
+    except Exception:
+        df_f = df
+    if df_f is None or df_f.empty:
+        return "No matching records after applying filters."
+
+    # Choose canonical columns
+    subj = "grant_subject_tran" if "grant_subject_tran" in df_f.columns else ("grant_subject" if "grant_subject" in df_f.columns else None)
+    pop = "grant_population_tran" if "grant_population_tran" in df_f.columns else ("grant_population" if "grant_population" in df_f.columns else None)
+    amt = "amount_usd" if "amount_usd" in df_f.columns else ("amount" if "amount" in df_f.columns else None)
+
+    if subj is None or pop is None or amt is None:
+        return "No matching records after applying filters."
+
+    try:
+        vals = pd.to_numeric(df_f[amt], errors="coerce").fillna(0.0)
+        tmp = df_f.assign(_val=vals)
+        g = (
+            tmp.groupby([subj, pop], dropna=False)["_val"]
+            .agg([("total_amount_usd", "sum"), ("grant_count", "size")])
+            .reset_index()
+        )
+        if g.empty:
+            return "No matching records after applying filters."
+        g = g.sort_values(["total_amount_usd", "grant_count"], ascending=[False, False]).head(top_n)
+        # Build Markdown table
+        header = f"| {subj.replace('_',' ').title()} | {pop.replace('_',' ').title()} | Grant Count | Total Amount (USD) |\n"
+        sep = "|---|---:|---:|---:|\n"
+        rows = []
+        for _, row in g.iterrows():
+            s = str(row[subj]) if row[subj] is not None else "Unknown"
+            p = str(row[pop]) if row[pop] is not None else "Unknown"
+            cnt = int(row["grant_count"]) if pd.notna(row["grant_count"]) else 0
+            tot = float(row["total_amount_usd"]) if pd.notna(row["total_amount_usd"]) else 0.0
+            rows.append(f"| {s} | {p} | {cnt:,} | ${tot:,.0f} |\n")
+        return header + sep + "".join(rows)
+    except Exception:
+        return "No matching records after applying filters."
+
+
 def _execute_metric(df: pd.DataFrame, pre_prompt: str, tool: str, params: Dict[str, Any]) -> str:
     q = (
         "Please call the specified analysis tool with the provided parameters and return only a small Markdown table or short summary.\n"
@@ -99,6 +160,14 @@ def _execute_metric(df: pd.DataFrame, pre_prompt: str, tool: str, params: Dict[s
     try:
         result = tool_query(df, q, pre_prompt, extra_ctx).strip()
         if result and not result.startswith("[tool_query error]"):
+            # If df_sql_select yields nothing, compute targeted focus programmatically
+            if tool == "df_sql_select" and _is_no_match(result):
+                try:
+                    # We need needs to compute proper filters; embed a lightweight heuristic here: if params contain SELECT with WHERE, fall back
+                    # Since _execute_metric lacks direct access to needs, handle in caller when collecting datapoints
+                    return result
+                except Exception:
+                    return result
             return result
     except Exception as e:
         # Fall back to direct analysis if tool_query fails
@@ -236,8 +305,26 @@ def _fallback_metric_analysis(df: pd.DataFrame, tool: str, params: Dict[str, Any
 def _collect_datapoints(df: pd.DataFrame, interview: Any, plan) -> List[DataPoint]:
     pre = _build_pre_prompt(df, interview)
     datapoints: List[DataPoint] = []
+    # Attempt to derive needs if present on plan or interview for targeted focus fallback
+    needs_like = getattr(interview, "needs", None)
+    if needs_like is None and hasattr(plan, "narrative_outline"):
+        # not available; leave None
+        pass
     for item in plan.metric_requests:
         content = _execute_metric(df, pre, item.tool, item.params)
+        # Automatic fallback for targeted focus when SQL returns empty
+        if item.tool == "df_sql_select" and _is_no_match(content):
+            try:
+                # Use interview.needs if available else derive minimal structure from interview
+                from .imports import StructuredNeeds as _SN  # local import to avoid cycles
+                if needs_like is None:
+                    subs = getattr(interview, "keywords", []) or []
+                    pops = getattr(interview, "populations", []) or []
+                    geos = getattr(interview, "geography", []) or []
+                    needs_like = _SN(subjects=subs, populations=pops, geographies=geos)
+                content = _metric_targeted_focus(df, needs_like)
+            except Exception:
+                pass
         dp_dict = {
             "id": _stable_dp_id(item.title or item.tool, item.tool, item.params),
             "title": item.title or item.tool,

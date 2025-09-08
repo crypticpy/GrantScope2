@@ -1,6 +1,9 @@
 from datetime import datetime
 import streamlit as st
 from typing import Optional, Dict, Any, List
+import threading
+
+_LOCK = threading.Lock()
 
 from .imports import ReportBundle
 
@@ -100,28 +103,33 @@ def create_progress_callback(report_id: str) -> callable:
 def _push_progress(report_id: str, message: str) -> None:
     """Enhanced progress push that also updates UI progress state."""
     try:
-        # Store detailed progress log (existing functionality)
-        prog = st.session_state.setdefault("advisor_progress", {})
-        arr = prog.setdefault(report_id, [])
-        arr.append(f"[{datetime.utcnow().isoformat()}Z] {message}")
-        
-        # Update UI progress state if available
-        try:
-            from advisor.ui_progress import get_stage_info
-            stage_info = get_stage_info(message)
-            if stage_info:
-                progress_key = f"advisor_progress_{report_id}"
-                progress_data = st.session_state.get(progress_key, {})
-                progress_data.update({
-                    "current_stage": stage_info["id"],
-                    "status": "running",
-                    "message": message,
-                    "timestamp": datetime.utcnow().isoformat(),
-                })
-                st.session_state[progress_key] = progress_data
-        except ImportError:
-            # UI progress module not available yet
-            pass
+        with _LOCK:
+            # Store detailed progress log (existing functionality)
+            prog = st.session_state.setdefault("advisor_progress", {})
+            arr = prog.setdefault(report_id, [])
+            arr.append(f"[{datetime.utcnow().isoformat()}Z] {message}")
+            
+            # Update UI progress state conservatively (do not override callback status)
+            try:
+                from advisor.ui_progress import get_stage_info
+                stage_info = get_stage_info(message)
+                if stage_info:
+                    progress_key = f"advisor_progress_{report_id}"
+                    progress_data = st.session_state.get(progress_key, {})
+                    # Do not override completed/error states set by callback
+                    if progress_data.get("status") in {"completed", "error"}:
+                        st.session_state[progress_key] = progress_data
+                    else:
+                        progress_data.update({
+                            "current_stage": stage_info["id"],
+                            "status": progress_data.get("status", "running"),
+                            "message": message,
+                            "timestamp": datetime.utcnow().isoformat(),
+                        })
+                        st.session_state[progress_key] = progress_data
+            except ImportError:
+                # UI progress module not available yet
+                pass
             
     except Exception:
         # Don't let progress updates break the pipeline

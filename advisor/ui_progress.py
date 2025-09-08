@@ -3,6 +3,9 @@
 import streamlit as st
 from typing import Dict, List, Optional
 from datetime import datetime
+import threading
+
+_LOCK = threading.Lock()
 
 
 STAGES = [
@@ -79,17 +82,18 @@ def create_progress_callback(report_id: str) -> callable:
     def update_progress(stage_index: int, status: str, message: str = "") -> None:
         """Update the progress state in session_state."""
         try:
-            progress_key = f"advisor_progress_{report_id}"
-            progress_data = st.session_state.get(progress_key, {})
-            
-            progress_data.update({
-                "current_stage": stage_index,
-                "status": status,  # 'running', 'completed', 'error'
-                "message": message,
-                "timestamp": datetime.utcnow().isoformat(),
-            })
-            
-            st.session_state[progress_key] = progress_data
+            with _LOCK:
+                progress_key = f"advisor_progress_{report_id}"
+                progress_data = st.session_state.get(progress_key, {})
+                
+                progress_data.update({
+                    "current_stage": stage_index,
+                    "status": status,  # 'running', 'completed', 'error'
+                    "message": message,
+                    "timestamp": datetime.utcnow().isoformat(),
+                })
+                
+                st.session_state[progress_key] = progress_data
             
         except Exception:
             # Don't let progress updates break the pipeline

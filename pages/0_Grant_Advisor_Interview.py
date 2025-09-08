@@ -15,8 +15,30 @@ from utils.app_state import (  # type: ignore
 )
 from utils.utils import download_text  # type: ignore
 
-# Flexible imports for the Advisor package (package vs repo-root execution)
+# Flexible imports for the Advisor package (prefer local repo modules, fallback to package)
 try:
+    from advisor.schemas import InterviewInput, ReportBundle  # type: ignore
+    from advisor.pipeline import run_interview_pipeline  # type: ignore
+    from advisor.renderer import (  # type: ignore
+        render_report_streamlit,
+        render_report_html,
+    )
+    from advisor.persist import (  # type: ignore
+        export_bundle,
+        import_bundle_from_upload,
+    )
+    from advisor.demo import (  # type: ignore
+        get_demo_interview,
+        get_demo_responses_dict,
+        load_demo_responses_json,
+    )
+    from advisor.ui_progress import (  # type: ignore
+        render_live_progress_tracker,
+        render_minimal_progress,
+        cleanup_progress_state,
+    )
+    from advisor.ui_progress import STAGES  # type: ignore
+except Exception:
     from GrantScope.advisor.schemas import InterviewInput, ReportBundle  # type: ignore
     from GrantScope.advisor.pipeline import run_interview_pipeline  # type: ignore
     from GrantScope.advisor.renderer import (  # type: ignore
@@ -37,29 +59,7 @@ try:
         render_minimal_progress,
         cleanup_progress_state,
     )
-except Exception:
-    from advisor.schemas import InterviewInput, ReportBundle  # type: ignore
-    from advisor.pipeline import run_interview_pipeline  # type: ignore
-    from advisor.renderer import (  # type: ignore
-        render_report_streamlit,
-        render_report_html,
-    )
-    from advisor.persist import (  # type: ignore
-        export_bundle,
-        import_bundle_from_upload,
-    )
-    from advisor.demo import (  # type: ignore
-        get_demo_interview,
-        get_demo_responses_dict,
-        load_demo_responses_json,
-    )
-    from advisor.pipeline.progress import STAGES  # type: ignore
-    from advisor.ui_progress import (  # type: ignore
-        render_live_progress_tracker,
-        render_minimal_progress,
-        cleanup_progress_state,
-    )
-    from advisor.pipeline.progress import STAGES  # type: ignore
+    from GrantScope.advisor.ui_progress import STAGES  # type: ignore
 
 
 st.set_page_config(page_title="GrantScope — Grant Advisor Interview", page_icon=":memo:")
@@ -308,6 +308,7 @@ def render_interview_page() -> None:
         st.stop()
 
     # Normal run path
+    # Background execution and live progress rendering
     if run_now and ai_enabled:
         interview = _make_interview_from_inputs(
             program_area=cast(str, program_area),
@@ -342,29 +343,52 @@ def render_interview_page() -> None:
         if df_nonnull2 is None:
             st.error("Data not available for analysis.")
         else:
+            import threading, time
             # Generate report ID for progress tracking
             report_id = _get_report_id(st.session_state.get("advisor_form", {}), df_nonnull2)
+            st.session_state["advisor_current_report_id"] = report_id
             
             _analysis_start_toast()
+            
+            # Background thread to run pipeline
+            def _run_pipeline_bg():
+                try:
+                    rpt = run_interview_pipeline(interview, df_nonnull2)
+                    st.session_state["advisor_last_bundle"] = rpt
+                    st.session_state["advisor_run_in_progress"] = False
+                except Exception as e:
+                    st.session_state["advisor_error"] = str(e)
+                    st.session_state["advisor_run_in_progress"] = False
+            
+            if not st.session_state.get("advisor_run_in_progress"):
+                st.session_state["advisor_run_in_progress"] = True
+                t = threading.Thread(target=_run_pipeline_bg, daemon=True)
+                t.start()
             
             # Create placeholder for progress tracker
             progress_placeholder = st.empty()
             
-            try:
-                # Run pipeline with progress tracking
-                report = _run_pipeline_with_progress(interview, df_nonnull2, report_id, progress_placeholder)
-                
-                # Clear progress tracker and show completion
+            # Show live progress tracker and auto-refresh until completion
+            with progress_placeholder:
+                render_live_progress_tracker(report_id, show_estimates=True)
+            
+            if st.session_state.get("advisor_run_in_progress"):
+                last = st.session_state.get("advisor_last_refresh_ts", 0.0)
+                now = time.time()
+                # Throttle reruns to ~1.5s
+                if now - float(last) > 1.5:
+                    st.session_state["advisor_last_refresh_ts"] = now
+                    # Trigger a rerun to update progress display
+                    st.experimental_rerun()
+            else:
+                # Clear progress placeholder and show completion or error
                 progress_placeholder.empty()
-                st.success("✅ Analysis complete!")
-                
-            except Exception as e:
-                progress_placeholder.empty()
-                st.error(f"Pipeline error: {e}")
-                report = None
-
-        if report:
-            st.session_state["advisor_last_bundle"] = report
+                if st.session_state.get("advisor_error"):
+                    st.error(f"Pipeline error: {st.session_state['advisor_error']}")
+                    report = None
+                else:
+                    st.success("✅ Analysis complete!")
+                    report = st.session_state.get("advisor_last_bundle")
             render_report_streamlit(report)
             st.success("Analysis complete. See tabs above for details and downloads.")
 
