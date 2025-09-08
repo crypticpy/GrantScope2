@@ -132,24 +132,44 @@ def stage4_synthesize_user(
     """User message for Stage 4: synthesize markdown sections using DataPoints."""
     return dedent(
         f"""
-        Draft report sections in Markdown using the provided DataPoints for grounding.
-        - Use clear headings and short paragraphs.
-        - Cite DataPoints explicitly with their IDs (e.g., (DP-001)) wherever relevant.
-        - Avoid restating full tables; briefly summarize and reference.
-        - Do not invent data. If something isn't supported by DataPoints, say so.
-
+        Draft a comprehensive report with a minimum of 8 detailed sections in Markdown using the provided DataPoints for grounding.
+        
+        Requirements:
+        - Create exactly 8 sections covering different aspects of the analysis
+        - Use clear headings and short paragraphs
+        - Cite DataPoints explicitly with their IDs (e.g., (DP-001)) wherever relevant
+        - Include actual data values, statistics, and rankings from the DataPoints
+        - Avoid restating full tables; briefly summarize and reference
+        - Do not invent data. If something isn't supported by DataPoints, say so
+        - Each section should provide actionable insights
+        
+        Section Types Required:
+        1. Overview - Executive summary of findings
+        2. Funding Patterns - Analysis of funding distribution
+        3. Key Players - Identification of major funders
+        4. Populations - Focus on beneficiary demographics
+        5. Geographies - Geographic distribution analysis
+        6. Time Trends - Temporal analysis of funding
+        7. Actionable Insights - Strategic recommendations
+        8. Next Steps - Concrete actions for grant seekers
+        
         Provide an array of sections, each with:
         {{
           "title": string,
           "markdown_body": string
         }}
-
+        
+        Include actual aggregated values and rankings in your analysis. For example:
+        - "Funder X ranks 1st with $2.3M in grants (DP-001)"
+        - "Education grants account for 35% of total funding (DP-002)"
+        - "Texas received 12% of all grants in the dataset (DP-003)"
+        
         Inputs:
         AnalysisPlan (JSON):
         ```json
         {plan}
         ```
-
+        
         DataPoints (JSON):
         ```json
         {datapoints_index}
@@ -197,15 +217,33 @@ def stage5_recommend_user(
     """User message for Stage 5: recommend funders and response tuning tips."""
     return dedent(
         f"""
-        Generate structured recommendations grounded in the DataPoints:
-        - "funder_candidates": 5 ranked items with fields {{ "name", "score", "rationale", "grounded_dp_ids": string[] }}
-        - "response_tuning": 5 concise tips with fields {{ "text", "grounded_dp_ids": string[] }}
-        - "search_queries": a few short query strings for further research.
+        Generate comprehensive structured recommendations grounded in the DataPoints:
+        - "funder_candidates": Minimum 5 ranked items with fields {{ "name", "score", "rationale", "grounded_dp_ids": string[] }}
+        - "response_tuning": Minimum 7 concise tips with fields {{ "text", "grounded_dp_ids": string[] }}
+        - "search_queries": Minimum 5 short query strings for further research.
+
+        Funder Candidates Requirements:
+        - Provide actual aggregated data values in rationales (e.g., "Awarded $2.3M across 45 grants from 2020-2024")
+        - Include rankings where applicable (e.g., "Ranks 3rd among education funders in the dataset")
+        - Reference specific DataPoint IDs for grounding
+        - Scores are 0.0–1.0 and should reflect relative fit based on actual data
+        
+        Response Tuning Requirements:
+        - Provide data-driven tips grounded in actual dataset statistics
+        - Include specific values from DataPoints (e.g., "Emphasize outcomes in X subject area, which accounts for 35% of funding")
+        - Reference population and geography data where relevant
+        - Include actionable advice based on time trends
+        
+        Search Queries Requirements:
+        - Generate specific queries based on actual dataset values
+        - Include funder names, subject areas, and geographic regions from the data
+        - Focus on recent grants and current funding priorities
 
         Rules:
         - Use only signals derivable from the dataset context and DataPoints. No external assumptions.
-        - Scores are 0.0–1.0 and should reflect relative fit.
+        - Scores are 0.0–1.0 and should reflect relative fit based on actual data values.
         - Cite relevant DataPoint IDs for each item.
+        - Include actual aggregated values and rankings in all responses.
 
         Return JSON only (no Markdown).
 

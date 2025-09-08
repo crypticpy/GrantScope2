@@ -183,4 +183,69 @@ def preprocess_data(grants):
     # Group to one row per grant (best-effort first occurrence per exploded combos)
     grouped_df = df.groupby('grant_index', as_index=False).first().set_index('grant_index')
 
+    # Add aggregated data summaries for rich context
+    df = _add_aggregated_summaries(df)
+
     return df, grouped_df
+
+def _add_aggregated_summaries(df: pd.DataFrame) -> pd.DataFrame:
+    """Add aggregated data summaries for rich context."""
+    # Add summary statistics columns
+    df['_total_amount'] = df['amount_usd'].sum()
+    df['_grant_count'] = len(df)
+    df['_avg_amount'] = df['amount_usd'].mean()
+    df['_median_amount'] = df['amount_usd'].median()
+    
+    # Add funder-level aggregations
+    funder_stats = df.groupby('funder_name')['amount_usd'].agg(['sum', 'count', 'mean']).reset_index()
+    funder_stats.columns = ['funder_name', '_funder_total_amount', '_funder_grant_count', '_funder_avg_amount']
+    funder_stats['_funder_rank_by_amount'] = funder_stats['_funder_total_amount'].rank(method='dense', ascending=False)
+    funder_stats['_funder_rank_by_count'] = funder_stats['_funder_grant_count'].rank(method='dense', ascending=False)
+    
+    # Merge back to main dataframe
+    df = df.merge(funder_stats, on='funder_name', how='left')
+    
+    # Add subject-level aggregations
+    if 'grant_subject_tran' in df.columns:
+        subject_stats = df.groupby('grant_subject_tran')['amount_usd'].agg(['sum', 'count']).reset_index()
+        subject_stats.columns = ['grant_subject_tran', '_subject_total_amount', '_subject_grant_count']
+        subject_stats['_subject_rank_by_amount'] = subject_stats['_subject_total_amount'].rank(method='dense', ascending=False)
+        subject_stats['_subject_rank_by_count'] = subject_stats['_subject_grant_count'].rank(method='dense', ascending=False)
+        subject_stats['_subject_percentage_of_total'] = (subject_stats['_subject_total_amount'] / df['amount_usd'].sum()) * 100
+        
+        # Merge back to main dataframe
+        df = df.merge(subject_stats, on='grant_subject_tran', how='left')
+    
+    # Add population-level aggregations
+    if 'grant_population_tran' in df.columns:
+        population_stats = df.groupby('grant_population_tran')['amount_usd'].agg(['sum', 'count']).reset_index()
+        population_stats.columns = ['grant_population_tran', '_population_total_amount', '_population_grant_count']
+        population_stats['_population_rank_by_amount'] = population_stats['_population_total_amount'].rank(method='dense', ascending=False)
+        population_stats['_population_rank_by_count'] = population_stats['_population_grant_count'].rank(method='dense', ascending=False)
+        population_stats['_population_percentage_of_total'] = (population_stats['_population_total_amount'] / df['amount_usd'].sum()) * 100
+        
+        # Merge back to main dataframe
+        df = df.merge(population_stats, on='grant_population_tran', how='left')
+    
+    # Add geography-level aggregations
+    if 'grant_geo_area_tran' in df.columns:
+        geo_stats = df.groupby('grant_geo_area_tran')['amount_usd'].agg(['sum', 'count']).reset_index()
+        geo_stats.columns = ['grant_geo_area_tran', '_geo_total_amount', '_geo_grant_count']
+        geo_stats['_geo_rank_by_amount'] = geo_stats['_geo_total_amount'].rank(method='dense', ascending=False)
+        geo_stats['_geo_rank_by_count'] = geo_stats['_geo_grant_count'].rank(method='dense', ascending=False)
+        geo_stats['_geo_percentage_of_total'] = (geo_stats['_geo_total_amount'] / df['amount_usd'].sum()) * 100
+        
+        # Merge back to main dataframe
+        df = df.merge(geo_stats, on='grant_geo_area_tran', how='left')
+    
+    # Add time trend aggregations
+    if 'year_issued' in df.columns:
+        year_stats = df.groupby('year_issued')['amount_usd'].agg(['sum', 'count']).reset_index()
+        year_stats.columns = ['year_issued', '_year_total_amount', '_year_grant_count']
+        year_stats['_year_rank_by_amount'] = year_stats['_year_total_amount'].rank(method='dense', ascending=False)
+        year_stats['_year_rank_by_count'] = year_stats['_year_grant_count'].rank(method='dense', ascending=False)
+        
+        # Merge back to main dataframe
+        df = df.merge(year_stats, on='year_issued', how='left')
+    
+    return df
