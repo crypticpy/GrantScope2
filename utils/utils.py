@@ -8,6 +8,14 @@ import pandas as pd
 import streamlit as st
 import json
 
+# Fallback cache decorator for test environments without full Streamlit runtime
+try:
+    _cache_data = st.cache_data  # type: ignore[attr-defined]
+except Exception:  # pragma: no cover - testing fallback
+    def _cache_data(**_kwargs):  # type: ignore[misc]
+        def _decorator(fn):
+            return fn
+        return _decorator
 
 def download_excel(df, filename, sheet_name: str = 'Sheet1'):
     output = BytesIO()

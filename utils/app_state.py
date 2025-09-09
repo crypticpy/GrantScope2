@@ -317,3 +317,90 @@ def get_selected_chart(default: str | None = None) -> str | None:
         return str(val) if val is not None else None
     except Exception:
         return default
+
+
+def _shorten_words(text: str, max_words: int = 12) -> str:
+    """Return the first max_words from text, normalized to single spaces."""
+    try:
+        words = " ".join(str(text or "").split()).split()
+        if len(words) <= max_words:
+            return " ".join(words)
+        return " ".join(words[:max_words])
+    except Exception:
+        return str(text or "")[:80]
+
+
+def get_planner_summary(max_len: int = 220) -> str | None:
+    """Build a compact planner summary from st.session_state planner_* keys.
+
+    Returns a short string like:
+    'Planner: name=Project X, outcomes=... timeline=6 months, budget=$25k-$100k.'
+    or None when no planner_* fields exist.
+    """
+    try:
+        ss = st.session_state
+        name = (ss.get("planner_project_name") or "").strip()
+        outcomes = _shorten_words(ss.get("planner_outcomes") or "", 12)
+        timeline = (ss.get("planner_timeline") or "").strip()
+        budget = (ss.get("planner_budget_range") or "").strip()
+
+        bits: list[str] = []
+        if name:
+            bits.append(f"name={name}")
+        if outcomes:
+            bits.append(f"outcomes={outcomes}")
+        if timeline:
+            bits.append(f"timeline={timeline}")
+        if budget:
+            bits.append(f"budget={budget}")
+
+        if not bits:
+            return None
+
+        s = "Planner: " + ", ".join(bits) + "."
+        if len(s) > max_len:
+            s = s[:max_len].rstrip(",; ")
+        return s
+    except Exception:
+        return None
+
+
+def get_budget_summary(max_len: int = 220) -> str | None:
+    """Build a compact budget summary from st.session_state budget_* keys.
+
+    Returns a short string like:
+    'Budget: total=$120,000, indirect_rate=10%, match=yes, flags=2.'
+    or None when no budget_* fields exist.
+    """
+    try:
+        ss = st.session_state
+        total = ss.get("budget_grand_total")
+        indir_pct = ss.get("budget_indirect_rate_pct")
+        match_avail = ss.get("budget_match_available")
+        flags = ss.get("budget_flags") if isinstance(ss.get("budget_flags"), list) else None
+
+        bits: list[str] = []
+        try:
+            if total is not None:
+                bits.append(f"total=${float(total):,.0f}")
+        except Exception:
+            pass
+        try:
+            if indir_pct is not None:
+                bits.append(f"indirect_rate={float(indir_pct):.0f}%")
+        except Exception:
+            pass
+        if match_avail is not None:
+            bits.append(f"match={'yes' if bool(match_avail) else 'no'}")
+        if flags is not None:
+            bits.append(f"flags={len(flags)}")
+
+        if not bits:
+            return None
+
+        s = "Budget: " + ", ".join(bits) + "."
+        if len(s) > max_len:
+            s = s[:max_len].rstrip(",; ")
+        return s
+    except Exception:
+        return None

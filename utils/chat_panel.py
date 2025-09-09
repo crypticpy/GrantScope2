@@ -4,6 +4,13 @@ from loaders.llama_index_setup import tool_query, stream_query, resolve_chart_co
 from utils.utils import is_feature_enabled
 from utils.app_state import get_selected_chart
 
+# Expose a module-level alias for tests to patch: utils.chat_panel.get_session_profile
+# The actual retrieval remains deferred inside functions for runtime safety.
+try:
+    from utils.app_state import get_session_profile as _get_session_profile_alias  # type: ignore
+except Exception:
+    _get_session_profile_alias = None  # type: ignore
+get_session_profile = _get_session_profile_alias  # type: ignore
 
 def _inject_right_sidebar_css_once(width_px: int = 420) -> None:
     """Inject CSS to create a fixed right-side chat area and reserve space in the main content."""
@@ -157,15 +164,68 @@ def _chat_sidebar_anchor(state_key: str) -> None:
 
 
 def _audience_preface() -> str:
-    """Return a preface to guide the assistant tone based on user experience level."""
+    """Return a preface to guide the assistant tone based on user experience level.
+    
+    When the user is a beginner, append a compact seasoning derived from their profile
+    (org_type, region, goal) if available. This keeps tone beginner-friendly while
+    adding lightweight context without exposing PII beyond these fields.
+    """
     try:
         from utils.app_state import get_session_profile  # deferred import
         prof = get_session_profile()
         if prof and getattr(prof, "experience_level", "new") == "new":
-            return (
+            preface = (
                 "Explain like I'm new to grants. Use short sentences and plain language. "
                 "Give 3 clear next steps at the end."
             )
+            # Append compact seasoning when profile fields exist
+            try:
+                org = getattr(prof, "org_type", "") or ""
+                region = getattr(prof, "region", "") or ""
+                goal = getattr(prof, "primary_goal", "") or ""
+                bits: list[str] = []
+                if org:
+                    bits.append(f"org_type={org}")
+                if region:
+                    bits.append(f"region={region}")
+                if goal:
+                    # Deterministic short summary: normalize whitespace and keep first 10 words
+                    goal_clean = " ".join(str(goal).split())
+                    goal_short = " ".join(goal_clean.split()[:10])
+                    if goal_short:
+                        bits.append(f"goal={goal_short}")
+                if bits:
+                    preface = f"{preface} Also consider the user's context: " + ", ".join(bits) + "."
+            except Exception:
+                # Seasoning is optional; ignore failures
+                pass
+
+            # Add very concise planner/budget seasoning when available
+            try:
+                from utils.app_state import get_planner_summary, get_budget_summary  # type: ignore
+                pb_bits: list[str] = []
+                try:
+                    ps = get_planner_summary()  # type: ignore[call-arg]
+                except Exception:
+                    ps = None
+                try:
+                    bs = get_budget_summary()  # type: ignore[call-arg]
+                except Exception:
+                    bs = None
+                if ps:
+                    pb_bits.append(str(ps))
+                if bs:
+                    pb_bits.append(str(bs))
+                if pb_bits:
+                    extra = " ".join(pb_bits)
+                    if len(extra) > 220:
+                        extra = extra[:220].rstrip(",; ")
+                    preface = f"{preface} Consider: {extra}"
+            except Exception:
+                # Optional seasoning; ignore failures
+                pass
+
+            return preface
     except Exception:
         pass
     # Default: concise professional tone

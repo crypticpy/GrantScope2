@@ -223,6 +223,55 @@ def _stage2_plan_cached(key: str, needs_dict: Dict[str, Any]) -> Dict[str, Any]:
         }
 
 
+def _get_planner_budget_sections() -> List[Dict[str, Any]]:
+    """Return optional sections derived from session planner_/budget_ summaries.
+
+    Uses utils.app_state.get_planner_summary/get_budget_summary when available.
+    If unavailable or empty, returns an empty list. Sections are compact and
+    beginner-friendly to lightly contextualize the advisor report.
+    """
+    try:
+        try:
+            from utils.app_state import get_planner_summary, get_budget_summary  # type: ignore
+        except Exception:
+            try:
+                from GrantScope.utils.app_state import (  # type: ignore
+                    get_planner_summary,
+                    get_budget_summary,
+                )
+            except Exception:
+                return []
+
+        sections: List[Dict[str, Any]] = []
+        ps: str | None = None
+        bs: str | None = None
+        try:
+            ps = get_planner_summary()  # type: ignore[call-arg]
+        except Exception:
+            ps = None
+        try:
+            bs = get_budget_summary()  # type: ignore[call-arg]
+        except Exception:
+            bs = None
+
+        if ps:
+            sections.append(
+                {
+                    "title": "Your Project Plan Summary",
+                    "markdown_body": str(ps),
+                }
+            )
+        if bs:
+            sections.append(
+                {
+                    "title": "Your Budget Summary",
+                    "markdown_body": str(bs),
+                }
+            )
+        return sections
+    except Exception:
+        # Optional enhancement only; fail closed
+        return []
 @st.cache_data(show_spinner=True)
 def _stage4_synthesize_cached(key: str, plan_dict: Dict[str, Any], dps_index: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     try:
@@ -233,12 +282,26 @@ def _stage4_synthesize_cached(key: str, plan_dict: Dict[str, Any], dps_index: Li
                 if isinstance(it, dict) and "title" in it and "markdown_body" in it:
                     clean.append({"title": str(it["title"]), "markdown_body": str(it["markdown_body"])})
             if clean:
-                # Ensure minimum 8 sections
-                return _ensure_min_sections(clean, dps_index)
+                # Ensure minimum 8 sections then append compact planner/budget summaries when available
+                sections = _ensure_min_sections(clean, dps_index)
+                try:
+                    extras = _get_planner_budget_sections()
+                    if extras:
+                        sections.extend(extras)
+                except Exception:
+                    pass
+                return sections
     except Exception:
         pass
-    # Fallback with deterministic 8-section template
-    return _generate_deterministic_sections(dps_index)
+    # Fallback with deterministic 8-section template + optional planner/budget summaries
+    sections = _generate_deterministic_sections(dps_index)
+    try:
+        extras = _get_planner_budget_sections()
+        if extras:
+            sections.extend(extras)
+    except Exception:
+        pass
+    return sections
 
 def _ensure_min_sections(sections: List[Dict[str, Any]], dps_index: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """Ensure minimum 8 sections with deterministic fills if needed."""

@@ -13,9 +13,18 @@ from utils.app_state import (  # type: ignore
     sidebar_controls,
     get_data,
 )
-# from utils.utils import download_text  # type: ignore
+# Guarded import for download_text utility (works in package or local)
+try:
+    from utils.utils import download_text  # type: ignore
+except Exception:  # pragma: no cover
+    try:
+        from GrantScope.utils.utils import download_text  # type: ignore
+    except Exception:
+        download_text = None  # type: ignore
 from utils.app_state import get_session_profile  # type: ignore
 from utils.app_state import is_newbie  # type: ignore
+from utils.help import render_page_help_panel  # type: ignore
+from config import is_enabled  # type: ignore
 
 # Flexible imports for the Advisor package (prefer local repo modules, fallback to package)
 try:
@@ -24,6 +33,7 @@ try:
     from advisor.renderer import (  # type: ignore
         render_report_streamlit,
         # render_report_html,
+        build_workbook_bundle,
     )
     from advisor.persist import (  # type: ignore
         import_bundle_from_upload,
@@ -45,6 +55,7 @@ except Exception:
     from GrantScope.advisor.renderer import (  # type: ignore
         render_report_streamlit,
         # render_report_html,
+        build_workbook_bundle,
     )
     from GrantScope.advisor.persist import (  # type: ignore
         import_bundle_from_upload,
@@ -63,6 +74,124 @@ except Exception:
 
 
 st.set_page_config(page_title="GrantScope — Grant Advisor Interview", page_icon=":memo:")
+
+
+# --- Workbook Export helpers (Download Workbook action) ---
+
+def _collect_session_prefix(prefix: str) -> dict:
+    """Collect a shallow dict of st.session_state items whose keys start with prefix."""
+    try:
+        ss = st.session_state  # type: ignore[attr-defined]
+    except Exception:
+        return {}
+    out: dict = {}
+    try:
+        for k, v in ss.items():
+            if isinstance(k, str) and k.startswith(prefix):
+                out[k] = v
+    except Exception:
+        pass
+    return out
+
+
+def _collect_insights_from_report(report: Any) -> dict:
+    """
+    Build a lightweight insights dict from a ReportBundle-like object:
+    - tables: [{'title', 'markdown'}] from datapoints.table_md
+    - figures: [{'label'}] from figures
+    - recommendations: [{'title','reason'}] from recommendations.funder_candidates
+    """
+    ins: dict = {"tables": [], "figures": [], "recommendations": []}
+    try:
+        # Tables from datapoints (markdown tables captured as pre text)
+        dps = getattr(report, "datapoints", []) or []
+        for dp in dps[:3]:
+            title = getattr(dp, "title", "") or getattr(dp, "id", "Table")
+            table_md = getattr(dp, "table_md", "") or ""
+            if table_md:
+                ins["tables"].append({"title": str(title), "markdown": str(table_md)})
+    except Exception:
+        pass
+    try:
+        figs = getattr(report, "figures", []) or []
+        for fig in figs[:3]:
+            label = getattr(fig, "label", "") or getattr(fig, "id", "Figure")
+            ins["figures"].append({"label": str(label)})
+    except Exception:
+        pass
+    try:
+        recs = getattr(getattr(report, "recommendations", None), "funder_candidates", []) or []
+        for fc in recs[:5]:
+            name = getattr(fc, "name", "Recommendation")
+            rationale = getattr(fc, "rationale", "") or ""
+            grounded = getattr(fc, "grounded_dp_ids", None)
+            if grounded:
+                rationale = f"{rationale} (cites {', '.join(grounded)})".strip()
+            ins["recommendations"].append({"title": str(name), "reason": str(rationale)})
+    except Exception:
+        pass
+    return ins
+
+
+def _render_workbook_download(report: Any) -> None:
+    """
+    Render a 'Download Workbook' action when a report exists.
+    Builds workbook bundle via advisor.renderer.build_workbook_bundle and uses download_text for .md.
+    HTML export is optional; shown only if available.
+    """
+    if report is None:
+        return
+
+    # Gather inputs
+    try:
+        profile = get_session_profile()  # type: ignore[call-arg]
+    except Exception:
+        profile = {}
+
+    # Coerce UserProfile/dataclass to dict for builder compatibility
+    try:
+        if profile and not isinstance(profile, dict):
+            if hasattr(profile, "to_dict"):
+                profile = profile.to_dict()  # type: ignore[assignment]
+            elif hasattr(profile, "__dict__"):
+                profile = dict(profile.__dict__)  # type: ignore[assignment]
+    except Exception:
+        profile = {}
+
+    planner = _collect_session_prefix("planner_")
+    budget = _collect_session_prefix("budget_")
+    insights = _collect_insights_from_report(report)
+
+    # UI
+    st.divider()
+    st.subheader("Download Workbook")
+    c1, c2 = st.columns(2)
+    with c1:
+        if st.button("📘 Download Workbook (.md)", key="download_workbook_md_btn"):
+            try:
+                pr = cast(Dict[str, Any], profile or {})
+                bundle = build_workbook_bundle(pr, planner, budget, insights)
+                md_text = bundle.get("markdown") or ""
+                if md_text and download_text:
+                    download_text(md_text, "workbook.md", mime="text/markdown")  # type: ignore[misc]
+                else:
+                    st.code(md_text or "# GrantScope Workbook\n\n_No content available._", language="markdown")
+            except Exception as e:
+                st.warning(f"Could not generate workbook markdown: {e}")
+    with c2:
+        if st.button("🧪 Download HTML (optional)", key="download_workbook_html_btn"):
+            try:
+                pr = cast(Dict[str, Any], profile or {})
+                bundle = build_workbook_bundle(pr, planner, budget, insights)
+                html_text = bundle.get("html")
+                if html_text and download_text:
+                    download_text(html_text, "workbook.html", mime="text/html")  # type: ignore[misc]
+                elif html_text:
+                    st.code(html_text[:5000] + ("\n... (truncated)" if len(html_text) > 5000 else ""), language="html")
+                else:
+                    st.info("HTML export is not available in this environment. Markdown is provided above.")
+            except Exception as e:
+                st.warning(f"Could not generate workbook HTML: {e}")
 
 
 def _ensure_session_keys() -> None:
@@ -148,9 +277,12 @@ def _analysis_start_toast() -> None:
 def _get_report_id(interview_data: Dict[str, Any], df: pd.DataFrame) -> str:
     """Generate a unique report ID for progress tracking."""
     try:
-        from advisor.pipeline.cache import cache_key_for
-        from advisor.pipeline.imports import stable_hash_for_obj
-        
+        from advisor.pipeline.cache import cache_key_for  # type: ignore
+        try:
+            from advisor.schemas import stable_hash_for_obj  # type: ignore
+        except Exception:  # pragma: no cover
+            from GrantScope.advisor.schemas import stable_hash_for_obj  # type: ignore
+
         key = cache_key_for(interview_data, df)
         return f"RPT-{stable_hash_for_obj({'k': key})[:8].upper()}"
     except Exception:
@@ -200,6 +332,14 @@ def render_interview_page() -> None:
     df, grouped_df, err = get_data(uploaded_file)
 
     st.title("Grant Advisor Interview")
+    
+    # Guided help panel (Newbie Mode gated)
+    try:
+        profile = get_session_profile()
+        if is_newbie(profile) and is_enabled("GS_ENABLE_NEWBIE_MODE"):
+            render_page_help_panel("advisor_report", audience="new")
+    except Exception:
+        pass
 
     # Newbie-friendly overlay
     try:
@@ -427,6 +567,7 @@ def render_interview_page() -> None:
                 t.start()
             
             # Create placeholder for progress tracker
+            report = None
             progress_placeholder = st.empty()
             
             # Show live progress tracker and auto-refresh until completion
@@ -456,6 +597,10 @@ def render_interview_page() -> None:
                     # Retrieve report from store if available, fallback to session
                     report = get_report(report_id) or st.session_state.get("advisor_last_bundle")
             render_report_streamlit(report)
+            try:
+                _render_workbook_download(report)
+            except Exception:
+                pass
             st.success("Analysis complete. See tabs above for details and downloads.")
 
     # Restore from JSON
@@ -467,6 +612,10 @@ def render_interview_page() -> None:
             st.session_state["advisor_last_bundle"] = restored
             st.success("Report imported. Rendering below…")
             render_report_streamlit(restored)
+            try:
+                _render_workbook_download(restored)
+            except Exception:
+                pass
         except Exception as e:
             st.error(f"Failed to import JSON: {e}")
 
@@ -474,6 +623,10 @@ def render_interview_page() -> None:
     if st.session_state.get("advisor_last_bundle") and not run_now and not st.session_state.get("advisor_demo_autorun"):
         st.markdown("### Last Report")
         render_report_streamlit(st.session_state["advisor_last_bundle"])
+        try:
+            _render_workbook_download(st.session_state["advisor_last_bundle"])
+        except Exception:
+            pass
 
 
 # Entrypoint for Streamlit page

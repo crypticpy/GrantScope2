@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Dict, List, Literal, Optional, TypedDict
+from typing import Dict, List, Literal, Optional, TypedDict, cast
 
 import streamlit as st
 
@@ -255,53 +255,144 @@ def render_contextual_help_buttons(terms: List[str], audience: HelpAudience = "n
                     render_help(term, audience, "expander")
 
 
+def get_page_help() -> Dict[str, Dict[str, object]]:
+    """Return per-page help mapping aligned to Writer Pack slugs and bullets."""
+    return {
+        "data_summary": {
+            "title": "Data Summary",
+            "content": """
+- See what you loaded and the biggest numbers at a glance.
+- Notice where most grants fall (common sizes or totals).
+- If something looks off, check your file or try the sample data.
+- Next: Continue to Grant Amount Distribution.
+""",
+            "related_terms": ["funder", "grant_amount", "year_issued"],
+        },
+        "grant_amount_distribution": {
+            "title": "Grant Amount Distribution",
+            "content": """
+- Shows how many grants fall into each dollar range.
+- Find the “typical” grant size for work like yours.
+- Spot very large or very small grants worth a closer look.
+- Decide your realistic range before planning.
+- Next: Continue to Scatter (over time).
+""",
+            "related_terms": ["amount_usd", "grant_amount", "cluster"],
+        },
+        "grant_amount_scatter": {
+            "title": "Scatter (over time)",
+            "content": """
+- Each dot is a grant placed by date and amount.
+- Look for trends (going up, steady, or down).
+- Do you see seasons or spikes? Note them for planning.
+- Outliers are fine—focus on the overall pattern.
+- Next: Continue to Heatmap.
+""",
+            "related_terms": ["year_issued", "trend", "outlier"],
+        },
+        "grant_amount_heatmap": {
+            "title": "Heatmap",
+            "content": """
+- Darker cells mean more grants or more dollars in that spot.
+- Find where activity is strong (by year, topic, or region).
+- Use strong areas to pick focus topics and timing.
+- Next: Continue to Treemaps.
+""",
+            "related_terms": ["subject", "population", "geography"],
+        },
+        "treemaps_extended": {
+            "title": "Treemaps",
+            "content": """
+- Bigger boxes mean more funding or more grants for that category.
+- Compare categories quickly to see what matters most.
+- Pick the top few that match your goal and audience.
+- Next: Continue to Word Clouds.
+""",
+            "related_terms": ["category", "subject", "funding_share"],
+        },
+        "grant_description_word_clouds": {
+            "title": "Word Clouds",
+            "content": """
+- Bigger words appear more often in your grant text.
+- Grab helpful terms for your plan and story.
+- Avoid buzzwords—pick simple words that match your work.
+- Next: Continue to Relationships.
+""",
+            "related_terms": ["keyword", "description", "term_frequency"],
+        },
+        "general_analysis_relationships": {
+            "title": "Relationships",
+            "content": """
+- Shows which fields often appear together (like funders and topics).
+- Use pairs you see often to shape your plan and partners.
+- Note ideas you want to test later in the Advisor step.
+- Next: Continue to Top Categories.
+""",
+            "related_terms": ["correlation", "co_occurrence", "funder", "subject"],
+        },
+        "top_categories_unique_grants": {
+            "title": "Top Categories",
+            "content": """
+- A ranked list of frequent categories.
+- Choose the top few that fit your goal and who you serve.
+- Use these as tags in your plan and future searches.
+- Next: Continue to Budget Reality Check.
+""",
+            "related_terms": ["category", "rank", "unique_count"],
+        },
+        "budget_reality_check": {
+            "title": "Budget Reality Check",
+            "content": """
+- Pick a budget that fits your capacity and the data.
+- See a typical range for similar work and area.
+- Note costs you must include (like indirect or match).
+- Save your choice—used in Planner and Advisor.
+- Next: Continue to Project Planner.
+""",
+            "related_terms": ["indirect_costs", "match", "amount_usd"],
+        },
+        "project_planner": {
+            "title": "Project Planner",
+            "content": """
+- Write a simple problem, solution, and who benefits.
+- List 3–5 key activities with a timeline.
+- Link your budget to what you will do.
+- Save before you continue.
+- Next: Continue to Advisor Report.
+""",
+            "related_terms": ["problem", "beneficiaries", "activities", "outcomes", "timeline"],
+        },
+        "advisor_report": {
+            "title": "Advisor Report",
+            "content": """
+- Get suggested funders and focus areas based on your inputs.
+- See next steps tailored to your goal and region.
+- Download your workbook when ready or go back to refine.
+- You can return here anytime.
+""",
+            "related_terms": ["recommendations", "funders", "next_steps"],
+        },
+    }
+
+
 def render_page_help_panel(page_name: str, audience: HelpAudience = "new") -> None:
     """Render help panel specific to a page."""
     if not is_enabled("GS_ENABLE_PLAIN_HELPERS"):
         return
-    
-    # Define page-specific help content
-    page_help = {
-        "data_summary": {
-            "title": "Understanding the Data Summary",
-            "content": """
-            This page shows you the basic facts about the grant data:
-            
-            • **Total grants**: How many grants are in the dataset
-            • **Total funding**: All the money given out in grants  
-            • **Date range**: When these grants were awarded
-            • **Top funders**: Which organizations give the most grants
-            
-            Use this page to get familiar with what's available before diving deeper.
-            """,
-            "related_terms": ["funder", "grant_amount", "year_issued"]
-        },
-        "distribution": {
-            "title": "Grant Amount Distribution",
-            "content": """
-            This chart shows how grant money is spread out:
-            
-            • **Small grants**: Usually under $10,000, great for new organizations
-            • **Medium grants**: $10,000 to $100,000, common for established programs  
-            • **Large grants**: Over $100,000, typically for major projects
-            
-            Look for the sweet spot where your project size matches common grant amounts.
-            """,
-            "related_terms": ["grant_amount", "amount_usd", "funder_type"]
-        }
-    }
-    
+
+    page_help = get_page_help()
     help_info = page_help.get(page_name)
     if not help_info:
         return
-    
+
     with st.expander("📋 Page Guide", expanded=audience == "new"):
         st.markdown(f"### {help_info['title']}")
-        st.markdown(help_info['content'])
-        
-        if help_info.get('related_terms'):
+        st.markdown(str(help_info['content']))
+
+        related_terms = cast(List[str], help_info.get("related_terms") or [])
+        if related_terms:
             st.markdown("**Key terms on this page:**")
-            render_contextual_help_buttons(help_info['related_terms'], audience)
+            render_contextual_help_buttons(related_terms, audience)
 
 
 def add_help_sidebar_button() -> None:

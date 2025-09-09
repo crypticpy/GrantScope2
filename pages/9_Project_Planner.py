@@ -253,6 +253,23 @@ def main():
                     "created_at": datetime.now().isoformat(),
                     "experience_level": experience_level
                 }
+
+                # Standardized planner_* keys persisted in session (canonical store is session_state)
+                try:
+                    st.session_state["planner_project_name"] = (project_name or "").strip()
+                    st.session_state["planner_problem"] = (problem or "").strip()
+                    st.session_state["planner_beneficiaries"] = (beneficiaries or "").strip()
+                    st.session_state["planner_activities"] = (activities or "").strip()
+                    st.session_state["planner_outcomes"] = (outcomes or "").strip()
+                    st.session_state["planner_timeline"] = timeline
+                    st.session_state["planner_urgency"] = urgency
+                    st.session_state["planner_budget_range"] = budget_range
+                    # Timestamp kept short and readable; safe primitive for prompts/logs
+                    st.session_state["planner_saved_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                except Exception:
+                    # If session_state unavailable (unlikely in Streamlit runtime), fail silently
+                    pass
+
                 st.success("✅ Project plan saved! Check the other tabs to see your brief and next steps.")
     
     with tab2:

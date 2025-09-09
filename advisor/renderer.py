@@ -8,7 +8,7 @@ APIs:
 
 from __future__ import annotations
 
-from typing import List, Optional, TYPE_CHECKING
+from typing import List, Optional, TYPE_CHECKING, Dict, Any
 from html import escape
 import re
 import unicodedata
@@ -38,6 +38,257 @@ except Exception:  # pragma: no cover
         from utils.utils import download_text  # type: ignore
     except Exception:
         download_text = None  # type: ignore
+
+
+# -----------------------------
+# Workbook Export (Markdown/HTML)
+# -----------------------------
+def _truncate_text(text: str, max_len: int = 600) -> str:
+    """Truncate long free-text with a clear marker."""
+    try:
+        s = str(text or "")
+    except Exception:
+        s = ""
+    if len(s) <= max_len:
+        return s
+    return s[: max_len - 15].rstrip() + "... [truncated]"
+
+def _redact_pii(text: str) -> str:
+    """
+    Redact common PII patterns such as emails and phone numbers.
+    Conservative patterns to avoid false positives.
+    """
+    try:
+        s = str(text or "")
+    except Exception:
+        s = ""
+    # Email
+    s = re.sub(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9\.-]+", "[redacted email]", s)
+    # EIN first to avoid phone regex consuming the trailing 7 digits
+    # Robust match: two digits + optional separator (hyphen/dash/space/dot) + seven digits
+    s = re.sub(r"(\d{2})[-\u2010-\u2015\u2212.\s]?(\d{7})", "[redacted EIN]", s)
+    # Fallback for plain ASCII hyphenated EIN (defensive)
+    s = re.sub(r"\d{2}-\d{7}", "[redacted EIN]", s)
+    # US-like phone numbers (require area code to avoid matching 7-digit sequences)
+    s = re.sub(r"\b(?:\+?1[-.\s]?)?(?:\(?\d{3}\)?[-.\s]?)\d{3}[-.\s]?\d{4}\b", "[redacted phone]", s)
+    return s
+
+def _safe_field(val: Any, max_len: int = 600) -> str:
+    """Stringify, redact, and truncate a value."""
+    try:
+        s = str(val if val is not None else "")
+    except Exception:
+        s = ""
+    return _truncate_text(_redact_pii(s), max_len=max_len)
+
+def _markdown_to_html_basic(md: str) -> str:
+    """
+    Very lightweight Markdown to HTML for headings/paragraphs only,
+    to avoid heavy deps. Not a full converter.
+    """
+    lines = (md or "").splitlines()
+    out: list[str] = []
+    for ln in lines:
+        if ln.startswith("### "):
+            out.append(f"<h3>{escape(ln[4:])}</h3>")
+        elif ln.startswith("## "):
+            out.append(f"<h2>{escape(ln[3:])}</h2>")
+        elif ln.startswith("# "):
+            out.append(f"<h1>{escape(ln[2:])}</h1>")
+        elif ln.strip().startswith("- "):
+            # simple list handling (start/end <ul> groups)
+            if not out or not out[-1].startswith("<ul"):
+                out.append("<ul>")
+            out.append(f"<li>{escape(ln.strip()[2:])}</li>")
+        elif ln.strip() == "":
+            # close list if last was <li>
+            if out and out[-1].startswith("<li>"):
+                out.append("</ul>")
+            out.append("<br/>")
+        else:
+            # close list if last was <li>
+            if out and out[-1].startswith("<li>"):
+                out.append("</ul>")
+            out.append(f"<p>{escape(ln)}</p>")
+    # Close any dangling list
+    if out and out[-1].startswith("<li>"):
+        out.append("</ul>")
+    return "\n".join(out)
+
+def build_workbook_bundle(
+    profile: Optional[Dict[str, Any]],
+    planner: Optional[Dict[str, Any]],
+    budget: Optional[Dict[str, Any]],
+    insights: Optional[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """
+    Assemble a beginner-friendly workbook bundle.
+
+    Returns:
+    {
+      "markdown": str,             # required
+      "html": Optional[str],       # optional mirror of markdown (lightweight)
+      "assets": Dict[str, bytes],  # optional assets (e.g., images) — may be empty
+    }
+
+    Guardrails:
+    - No PII leakage: redact emails/phones/EIN; truncate long free-text.
+    - Missing optional sections insert placeholders.
+    - Writer Pack headings and plain, friendly language.
+    """
+    profile = profile or {}
+    planner = planner or {}
+    budget = budget or {}
+    insights = insights or {}
+
+    headings = [
+        "Profile Summary",
+        "Budget Summary",
+        "Project Plan",
+        "Key Charts",
+        "Recommendations",
+        "Draft Proposal Language",
+    ]
+
+    # Profile Summary
+    pf_bits: list[str] = []
+    for key in ("experience_level", "org_type", "region", "goal", "project_type"):
+        if key in profile and profile.get(key):
+            pf_bits.append(f"- {key.replace('_',' ').title()}: {_safe_field(profile.get(key))}")
+    notes_val = profile.get("notes")
+    if notes_val:
+        pf_bits.append(f"- Notes: {_safe_field(notes_val, max_len=400)}")
+    if not pf_bits:
+        pf_bits.append("- No profile information available.")
+
+    # Budget Summary
+    bg_bits: list[str] = []
+    # Support standardized budget_* keys and planner_budget_range
+    if budget:
+        if budget.get("budget_grand_total") is not None:
+            try:
+                total = float(budget.get("budget_grand_total"))
+                bg_bits.append(f"- Estimated Total: ${total:,.0f}")
+            except Exception:
+                bg_bits.append(f"- Estimated Total: {_safe_field(budget.get('budget_grand_total'))}")
+        if budget.get("budget_indirect_rate_pct") is not None:
+            bg_bits.append(f"- Indirect Rate: {_safe_field(budget.get('budget_indirect_rate_pct'))}%")
+        if budget.get("budget_match_available") is not None:
+            bg_bits.append(f"- Match Available: {'Yes' if bool(budget.get('budget_match_available')) else 'No'}")
+        if isinstance(budget.get("budget_flags"), list) and budget.get("budget_flags"):
+            flags = ", ".join([_safe_field(x) for x in budget.get("budget_flags")])
+            bg_bits.append(f"- Flags: {flags}")
+    # Planner budget range
+    if not any("Estimated Total" in x for x in bg_bits):
+        p_range = planner.get("planner_budget_range")
+        if p_range:
+            bg_bits.append(f"- Budget Range: {_safe_field(p_range)}")
+    if not bg_bits:
+        bg_bits.append("- No budget details available.")
+
+    # Project Plan
+    pl_bits: list[str] = []
+    name = planner.get("planner_project_name")
+    if name:
+        pl_bits.append(f"- Project Name: {_safe_field(name)}")
+    for key, label in [
+        ("planner_problem", "Problem"),
+        ("planner_beneficiaries", "Beneficiaries"),
+        ("planner_activities", "Activities"),
+        ("planner_outcomes", "Outcomes"),
+        ("planner_timeline", "Timeline"),
+        ("planner_urgency", "Urgency"),
+    ]:
+        if planner.get(key):
+            pl_bits.append(f"- {label}: {_safe_field(planner.get(key), max_len=500)}")
+    if not pl_bits:
+        pl_bits.append("- No planner details saved yet.")
+
+    # Key Charts (simple tables/text placeholders)
+    kc_bits: list[str] = []
+    tables = insights.get("tables") if isinstance(insights, dict) else None
+    figures = insights.get("figures") if isinstance(insights, dict) else None
+    if tables and isinstance(tables, list):
+        for t in tables[:3]:
+            title = _safe_field(t.get("title") if isinstance(t, dict) else "Table")
+            body = _safe_field(t.get("markdown") if isinstance(t, dict) else "", max_len=700)
+            kc_bits.append(f"#### {title}\n\n```\n{body}\n```")
+    elif figures and isinstance(figures, list):
+        for f in figures[:3]:
+            label = _safe_field(f.get("label") if isinstance(f, dict) else "Figure")
+            kc_bits.append(f"- {label} (see app for visualization)")
+    else:
+        kc_bits.append("_No charts captured yet. Take a snapshot or save a small table next time._")
+
+    # Recommendations (plain, friendly copy)
+    rec_bits: list[str] = []
+    recs = insights.get("recommendations") if isinstance(insights, dict) else None
+    if recs and isinstance(recs, list):
+        rec_bits.append("_Based on the current view and your goal…_")
+        for r in recs[:5]:
+            title = _safe_field(r.get("title") if isinstance(r, dict) else "Recommendation")
+            reason = _safe_field(r.get("reason") if isinstance(r, dict) else "")
+            rec_bits.append(f"- {title}: {reason}".strip())
+    else:
+        rec_bits.append("_Suggestions will appear here after you run the Advisor._")
+
+    # Draft Proposal Language (fill simple templates from Writer pack)
+    # Use available fields; keep simple and declarative.
+    problem_txt = _safe_field(planner.get("planner_problem") or "", max_len=400)
+    beneficiaries_txt = _safe_field(planner.get("planner_beneficiaries") or "", max_len=200)
+    activities_txt = _safe_field(planner.get("planner_activities") or "", max_len=400)
+    outcomes_txt = _safe_field(planner.get("planner_outcomes") or "", max_len=300)
+    budget_range_txt = _safe_field(planner.get("planner_budget_range") or "", max_len=80)
+
+    draft_parts = [
+        f"**Problem.** Our community is {beneficiaries_txt or 'the people we serve'}. "
+        f"They face: {problem_txt or 'a clear need we describe simply'}.",
+        f"**Solution.** We will {activities_txt or 'carry out a short list of actions'} "
+        f"so the people we serve benefit.",
+        f"**Outcomes.** We expect: {outcomes_txt or 'clear, simple results we can measure'}.",
+        f"**Budget fit.** With a budget of {budget_range_txt or 'a realistic amount'}, we will deliver the activities listed above.",
+    ]
+
+    # Compose Markdown
+    md_parts: list[str] = []
+    md_parts.append("# GrantScope Workbook\n")
+    # Profile
+    md_parts.append(f"## {headings[0]}\n")
+    md_parts.extend(pf_bits)
+    md_parts.append("")
+    # Budget
+    md_parts.append(f"## {headings[1]}\n")
+    md_parts.extend(bg_bits)
+    md_parts.append("")
+    # Project Plan
+    md_parts.append(f"## {headings[2]}\n")
+    md_parts.extend(pl_bits)
+    md_parts.append("")
+    # Key Charts
+    md_parts.append(f"## {headings[3]}\n")
+    md_parts.extend(kc_bits)
+    md_parts.append("")
+    # Recommendations
+    md_parts.append(f"## {headings[4]}\n")
+    md_parts.extend(rec_bits)
+    md_parts.append("")
+    # Draft Proposal Language
+    md_parts.append(f"## {headings[5]}\n")
+    for para in draft_parts:
+        md_parts.append(para)
+    md_parts.append("")
+
+    markdown = "\n".join(md_parts).strip() + "\n"
+    # Optional lightweight HTML mirror
+    try:
+        html = _markdown_to_html_basic(markdown)
+    except Exception:
+        html = None
+
+    # Optional assets (reserved for future: images/tables)
+    assets: Dict[str, bytes] = {}
+
+    return {"markdown": markdown, "html": html, "assets": assets}
 
 
 def _clean_interpretation_text(text: str, for_markdown: bool = True) -> str:

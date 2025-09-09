@@ -10,8 +10,9 @@ from typing import Dict, List, Optional, Tuple
 
 import streamlit as st
 
-from config import require_flag
+from config import require_flag, is_enabled
 from utils.app_state import init_session_state, sidebar_controls, get_session_profile, is_newbie
+from utils.help import render_page_help_panel
 
 
 st.set_page_config(page_title="Budget Reality Check - GrantScope", page_icon="💰")
@@ -90,6 +91,10 @@ def main():
     st.title("💰 Budget Reality Check")
     st.markdown("**See if your budget matches common grant sizes and fix common issues.**")
     
+    # Newbie help panel (gated)
+    if is_enabled("GS_ENABLE_NEWBIE_MODE") and is_newbie_user:
+        render_page_help_panel("budget_reality_check", audience="new")
+    
     # Sidebar controls
     sidebar_controls()
     
@@ -152,6 +157,18 @@ def main():
             
             # Analyze budget
             results = analyze_budget(lines, indirect_rate, match_available)
+
+            # Persist standardized budget_* keys in session_state
+            try:
+                st.session_state["budget_indirect_rate_pct"] = float(indirect_rate)
+                st.session_state["budget_match_available"] = bool(match_available)
+                st.session_state["budget_total_direct"] = float(results.get("total_direct", 0.0))
+                st.session_state["budget_indirect_costs"] = float(results.get("indirect_costs", 0.0))
+                st.session_state["budget_grand_total"] = float(results.get("grand_total", 0.0))
+                st.session_state["budget_flags"] = list(results.get("flags", [])) if isinstance(results.get("flags"), list) else []
+            except Exception:
+                # Session persistence is best-effort; ignore failures in constrained contexts
+                pass
             
             # Display results
             st.subheader("Results")

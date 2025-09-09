@@ -16,6 +16,14 @@ except Exception:
 
 from loaders.llama_index_setup import tool_query
 
+# Expose a module-level alias for tests to patch: utils.ai_explainer.get_session_profile
+# Actual retrieval remains deferred inside functions for runtime safety.
+try:
+    from utils.app_state import get_session_profile as _get_session_profile_alias  # type: ignore
+except Exception:
+    _get_session_profile_alias = None  # type: ignore
+get_session_profile = _get_session_profile_alias  # type: ignore
+
 
 def _audience_preface() -> str:
     """Return a tone/style instruction based on session profile."""

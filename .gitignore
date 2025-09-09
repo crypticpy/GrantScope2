@@ -46,3 +46,11 @@ Thumbs.db
 
 # Crush local state
 .crush/
+
+#roocode stuff
+.roocode/
+.roocode_dev/
+.roomodes/
+.roo/
+.ruru/
+
