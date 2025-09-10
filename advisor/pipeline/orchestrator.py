@@ -1,52 +1,100 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Dict, List, cast
+from typing import Any, cast
+
 import pandas as pd
 
-from .imports import (
-    InterviewInput, StructuredNeeds, AnalysisPlan, MetricRequest, DataPoint, Recommendations,
-    ReportSection, ReportBundle, TuningTip, SearchQuery, stable_hash_for_obj, WHITELISTED_TOOLS,
-    _stage0_intake_summary_cached, _stage1_normalize_cached, _stage2_plan_cached,
-    _stage4_synthesize_cached, _stage5_recommend_cached, _tokens_lower, _apply_needs_filters,
-    tool_query,
-)
 from .cache import cache_key_for
 from .convert import _safe_to_dict
-from .metrics import _ensure_funder_metric, _collect_datapoints
-from .funders import _coerce_funder_candidate, _fallback_funder_candidates, _derive_grounded_dp_ids
 from .figures_wrap import _figures_default
-from .progress import _push_progress, _persist_report, create_progress_callback
+from .funders import _coerce_funder_candidate, _derive_grounded_dp_ids, _fallback_funder_candidates
+from .imports import (
+    WHITELISTED_TOOLS,
+    AnalysisPlan,
+    InterviewInput,
+    MetricRequest,
+    Recommendations,
+    ReportBundle,
+    ReportSection,
+    SearchQuery,
+    StructuredNeeds,
+    TuningTip,
+    _apply_needs_filters,
+    _stage0_intake_summary_cached,
+    _stage1_normalize_cached,
+    _stage2_plan_cached,
+    _stage4_synthesize_cached,
+    _stage5_recommend_cached,
+    _tokens_lower,
+    stable_hash_for_obj,
+)
+from .metrics import _collect_datapoints, _ensure_funder_metric
+from .progress import _persist_report, _push_progress, create_progress_callback
+
+
+def _coerce_search_query(it: Any) -> SearchQuery | None:
+    """
+    Coerce a heterogeneous item from rec_raw['search_queries'] into a SearchQuery.
+    Accepts SearchQuery, str, or dicts with keys like 'query' or 'text'.
+    Returns None for empty/invalid inputs.
+    """
+    try:
+        if isinstance(it, SearchQuery):
+            return it
+        if isinstance(it, str):
+            s = it.strip()
+            return SearchQuery(query=s) if s else None
+        if isinstance(it, dict):
+            # Prefer canonical 'query', but tolerate common variants
+            q = it.get("query") or it.get("text") or it.get("q") or it.get("keyword")
+            if isinstance(q, str):
+                q = q.strip()
+            if q:
+                notes = it.get("notes", "")
+                return SearchQuery(query=str(q), notes=str(notes))
+            # Fallback: use first non-empty value
+            for v in it.values():
+                sv = str(v or "").strip()
+                if sv:
+                    return SearchQuery(query=sv)
+            return None
+        # Generic fallback
+        s = str(it or "").strip()
+        return SearchQuery(query=s) if s else None
+    except Exception:
+        return None
+
 
 def run_interview_pipeline(interview: InterviewInput, df: pd.DataFrame) -> ReportBundle:
     """Run the staged advisor pipeline and return a ReportBundle."""
     key = cache_key_for(interview, df)
     report_id = f"RPT-{stable_hash_for_obj({'k': key})[:8].upper()}"
-    
+
     # Create progress callback for UI updates
     progress_callback = create_progress_callback(report_id)
 
     # Stage 0: Intake summary
     _push_progress(report_id, "Stage 0: Summarizing intake")
-    progress_callback(0, 'running', 'Starting intake summary')
+    progress_callback(0, "running", "Starting intake summary")
     interview_dict = _safe_to_dict(interview)
     intake_summary = _stage0_intake_summary_cached(key, interview_dict)
-    progress_callback(0, 'completed', 'Finished intake summary')
+    progress_callback(0, "completed", "Finished intake summary")
 
     # Stage 1: Normalize -> StructuredNeeds
     _push_progress(report_id, "Stage 1: Normalizing interview into StructuredNeeds")
-    progress_callback(1, 'running', 'Analyzing your requirements')
+    progress_callback(1, "running", "Analyzing your requirements")
     needs_dict = _stage1_normalize_cached(key, interview_dict)
     needs = StructuredNeeds(**needs_dict)
-    progress_callback(1, 'completed', 'Finished analyzing requirements')
+    progress_callback(1, "completed", "Finished analyzing requirements")
 
     # Stage 2: Plan
     _push_progress(report_id, "Stage 2: Planning analysis (tools)")
-    progress_callback(2, 'running', 'Planning analysis approach')
+    progress_callback(2, "running", "Planning analysis approach")
     plan_dict = _stage2_plan_cached(key, _safe_to_dict(needs))
-    progress_callback(2, 'completed', 'Finished planning approach')
+    progress_callback(2, "completed", "Finished planning approach")
 
-    metric_requests: List[MetricRequest] = []
+    metric_requests: list[MetricRequest] = []
     for it in plan_dict.get("metric_requests", []):
         try:
             if it["tool"] in WHITELISTED_TOOLS:
@@ -62,21 +110,25 @@ def run_interview_pipeline(interview: InterviewInput, df: pd.DataFrame) -> Repor
 
     # Ensure at least one funder-level metric when appropriate
     metric_requests = _ensure_funder_metric(df, needs, metric_requests)
-    plan = AnalysisPlan(metric_requests=metric_requests, narrative_outline=list(plan_dict.get("narrative_outline", [])))
+    plan = AnalysisPlan(
+        metric_requests=metric_requests,
+        narrative_outline=list(plan_dict.get("narrative_outline", [])),
+    )
 
     # Stage 3: Execute tool-assisted metrics
     _push_progress(report_id, "Stage 3: Executing planned metrics")
-    progress_callback(3, 'running', 'Running calculations')
+    progress_callback(3, "running", "Running calculations")
     try:
         df_for_metrics, _used_info = _apply_needs_filters(df, needs)
     except Exception:
         df_for_metrics = df
     datapoints = _collect_datapoints(df_for_metrics, interview, plan)
-    progress_callback(3, 'completed', 'Finished calculations')
+    progress_callback(3, "completed", "Finished calculations")
 
     # Stage 4: Synthesize sections (grounded with datapoints)
     _push_progress(report_id, "Stage 4: Synthesizing report sections")
-    progress_callback(4, 'running', 'Writing personalized recommendations')
+    progress_callback(4, "running", "Writing personalized recommendations")
+
     def _trim_md(s: Any, max_len: int = 2000) -> str:
         try:
             txt = str(s or "")
@@ -98,39 +150,46 @@ def run_interview_pipeline(interview: InterviewInput, df: pd.DataFrame) -> Repor
         for dp in datapoints
     ]
     sections_raw = _stage4_synthesize_cached(key, _safe_to_dict(plan), dps_index)
-    sections = [ReportSection(title=s["title"], markdown_body=s["markdown_body"]) for s in sections_raw]
-    progress_callback(4, 'completed', 'Finished writing recommendations')
+    sections = [
+        ReportSection(title=s["title"], markdown_body=s["markdown_body"]) for s in sections_raw
+    ]
+    progress_callback(4, "completed", "Finished writing recommendations")
 
     # Stage 5: Recommendations
     _push_progress(report_id, "Stage 5: Generating recommendations")
-    progress_callback(5, 'running', 'Identifying potential funders')
+    progress_callback(5, "running", "Identifying potential funders")
     rec_raw = _stage5_recommend_cached(key, needs_dict, dps_index)
     rec = Recommendations(
         funder_candidates=[
-            fc for fc in (_coerce_funder_candidate(it) for it in (rec_raw.get("funder_candidates") or [])) if fc is not None
+            fc
+            for fc in (
+                _coerce_funder_candidate(it) for it in (rec_raw.get("funder_candidates") or [])
+            )
+            if fc is not None
         ],
         response_tuning=[
-            it if isinstance(it, TuningTip) else TuningTip(**cast(Dict[str, Any], it))
+            it if isinstance(it, TuningTip) else TuningTip(**cast(dict[str, Any], it))
             for it in (rec_raw.get("response_tuning") or [])
         ],
         search_queries=[
-            it if isinstance(it, SearchQuery) else (
-                SearchQuery(query=str(it)) if isinstance(it, str) else SearchQuery(**cast(Dict[str, Any], it))
-            )
+            sq
             for it in (rec_raw.get("search_queries") or [])
+            for sq in (_coerce_search_query(it),)
+            if sq is not None
         ],
     )
-    progress_callback(5, 'completed', 'Finished identifying funders')
- 
+    progress_callback(5, "completed", "Finished identifying funders")
+
     # Post-process: drop placeholder/zero-score candidates before fallback
     try:
+
         def _is_placeholder(name: Any) -> bool:
             s = str(name or "").strip().lower()
             return s in {"", "nan", "none", "null", "n/a", "unavailable", "unknown"}
+
         # Keep only usable candidates (non-placeholder name). Allow zero scores; fallback will add ranked items.
         rec.funder_candidates = [
-            fc for fc in rec.funder_candidates
-            if not _is_placeholder(getattr(fc, "name", ""))
+            fc for fc in rec.funder_candidates if not _is_placeholder(getattr(fc, "name", ""))
         ]
     except Exception:
         pass
@@ -149,12 +208,14 @@ def run_interview_pipeline(interview: InterviewInput, df: pd.DataFrame) -> Repor
             fc.score = s
     except Exception:
         pass
- 
+
     # Robust fallback: ensure at least 8 ranked funder candidates grounded in df aggregates
     try:
         min_needed = 8
         existing = list(rec.funder_candidates)
-        if len(existing) < min_needed or all((getattr(fc, "score", 0.0) or 0.0) <= 0.0 for fc in existing):
+        if len(existing) < min_needed or all(
+            (getattr(fc, "score", 0.0) or 0.0) <= 0.0 for fc in existing
+        ):
             fb_items = _fallback_funder_candidates(df, needs, datapoints, min_n=min_needed)
             seen_names = {getattr(fc, "name", "") for fc in existing if getattr(fc, "name", "")}
             for cand in fb_items:
@@ -163,14 +224,14 @@ def run_interview_pipeline(interview: InterviewInput, df: pd.DataFrame) -> Repor
                     seen_names.add(cand.name)
                     if len(existing) >= min_needed * 2:  # Allow up to 10 candidates
                         break
-            rec.funder_candidates = existing[:min_needed * 2]  # Cap at 10 candidates
+            rec.funder_candidates = existing[: min_needed * 2]  # Cap at 10 candidates
     except Exception:
         pass
 
     # Additional fallbacks to avoid terse recommendation output
     try:
         grounded_ids = _derive_grounded_dp_ids(datapoints)
- 
+
         # Ensure response_tuning contains at least 7 rich, context-aware tips
         existing_tips = list(getattr(rec, "response_tuning", []) or [])
         if len(existing_tips) < 7:
@@ -195,18 +256,24 @@ def run_interview_pipeline(interview: InterviewInput, df: pd.DataFrame) -> Repor
                 subj = pops = geos = ""
             extended = []
             if subj:
-                extended.append(f"Tailor narrative to subject focus ({subj}); cite top subject patterns in the data.")
+                extended.append(
+                    f"Tailor narrative to subject focus ({subj}); cite top subject patterns in the data."
+                )
             if pops:
-                extended.append(f"Center beneficiary needs ({pops}); ground claims using population-level datapoints.")
+                extended.append(
+                    f"Center beneficiary needs ({pops}); ground claims using population-level datapoints."
+                )
             if geos:
-                extended.append(f"Localize impact for geographies ({geos}); include examples aligned to those areas.")
+                extended.append(
+                    f"Localize impact for geographies ({geos}); include examples aligned to those areas."
+                )
             # Build final tip list up to 10, then trim to 7
             tip_texts = base_tips + extended
             while len(existing_tips) < 7 and tip_texts:
                 txt = tip_texts.pop(0)
                 existing_tips.append(TuningTip(text=txt, grounded_dp_ids=list(grounded_ids)))
             rec.response_tuning = existing_tips[:7]
- 
+
         # Ensure search_queries has at least 5 focused items
         existing_queries = list(getattr(rec, "search_queries", []) or [])
         if len(existing_queries) < 5:
@@ -215,7 +282,7 @@ def run_interview_pipeline(interview: InterviewInput, df: pd.DataFrame) -> Repor
             base_terms.extend(_tokens_lower(getattr(needs, "populations", []))[:1])
             base_terms.extend(_tokens_lower(getattr(needs, "geographies", []))[:1])
             seen_q = {getattr(it, "query", "") for it in existing_queries}
-            queries: List[SearchQuery] = existing_queries[:]
+            queries: list[SearchQuery] = existing_queries[:]
             for q in base_terms:
                 if q and q not in seen_q:
                     queries.append(SearchQuery(query=f"foundations funding {q} recent grants"))
@@ -226,7 +293,9 @@ def run_interview_pipeline(interview: InterviewInput, df: pd.DataFrame) -> Repor
                         SearchQuery(query="foundations funding education youth recent grants"),
                         SearchQuery(query="corporate giving STEM after-school Texas"),
                         SearchQuery(query="foundations poverty alleviation grants 2024"),
-                        SearchQuery(query="corporate social responsibility grants diversity equity"),
+                        SearchQuery(
+                            query="corporate social responsibility grants diversity equity"
+                        ),
                     ]
                 )
             rec.search_queries = queries[:7]  # Allow up to 7 queries
@@ -239,17 +308,19 @@ def run_interview_pipeline(interview: InterviewInput, df: pd.DataFrame) -> Repor
         if len(rec.funder_candidates) < 8:
             # This should have been handled by the fallback, but double-check
             fb_items = _fallback_funder_candidates(df, needs, datapoints, min_n=8)
-            seen_names = {getattr(fc, "name", "") for fc in rec.funder_candidates if getattr(fc, "name", "")}
+            seen_names = {
+                getattr(fc, "name", "") for fc in rec.funder_candidates if getattr(fc, "name", "")
+            }
             for cand in fb_items:
                 if cand.name not in seen_names and len(rec.funder_candidates) < 10:
                     rec.funder_candidates.append(cand)
                     seen_names.add(cand.name)
-        
+
         # Ensure we have sufficient sections
         if len(sections) < 8:
             # This should have been handled by the stage4 synthesis, but double-check
             pass  # Sections are already processed, this is just a quality check
-        
+
         # Validate that we have rich data context
         if not datapoints:
             # Log warning about missing datapoints
@@ -260,7 +331,7 @@ def run_interview_pipeline(interview: InterviewInput, df: pd.DataFrame) -> Repor
 
     # Stage 6: Figures and finalize bundle
     _push_progress(report_id, "Stage 6: Building figures and finalizing")
-    progress_callback(6, 'running', 'Creating final report')
+    progress_callback(6, "running", "Creating final report")
     figures = _figures_default(df_for_metrics, interview, needs)
 
     if intake_summary:
@@ -287,7 +358,8 @@ def run_interview_pipeline(interview: InterviewInput, df: pd.DataFrame) -> Repor
 
     _persist_report(report_id, bundle)
     _push_progress(report_id, "Pipeline complete")
-    progress_callback(6, 'completed', 'Analysis complete!')
+    progress_callback(6, "completed", "Analysis complete!")
     return bundle
+
 
 __all__ = ["run_interview_pipeline"]

@@ -1,12 +1,12 @@
+import pandas as pd
 import plotly.express as px
 import streamlit as st
-import pandas as pd
 
-from utils.utils import download_excel, download_csv, generate_page_prompt
-from utils.chat_panel import chat_panel
-from utils.app_state import set_selected_chart
 from config import is_enabled
 from utils.ai_explainer import render_ai_explainer
+from utils.app_state import set_selected_chart
+from utils.chat_panel import chat_panel
+from utils.utils import download_csv, download_excel, generate_page_prompt
 
 
 def grant_amount_distribution(df, grouped_df, selected_chart, selected_role, ai_enabled):
@@ -32,7 +32,8 @@ def grant_amount_distribution(df, grouped_df, selected_chart, selected_role, ai_
 
     audience = "pro" if selected_role == "Grant Analyst/Writer" else "new"
     if is_enabled("GS_ENABLE_PLAIN_HELPERS") and audience == "new":
-        st.info("""
+        st.info(
+            """
         What this chart shows:
         - How grant money is grouped into size buckets (USD clusters)
 
@@ -42,11 +43,14 @@ def grant_amount_distribution(df, grouped_df, selected_chart, selected_role, ai_
         What to do next:
         - Pick a cluster that matches your project size
         - Focus on funders that commonly award in that range
-        """)
+        """
+        )
 
-    st.write("""
+    st.write(
+        """
         Dive into the dynamic landscape of grant funding with our interactive distribution chart. This tool lets you visualize how grants are dispersed across various USD clusters, offering a clear view of funding trends and concentrations. Select different clusters to tailor the data shown and discover patterns at a glance.
-        """)
+        """
+    )
 
     # Validate required columns
     req_cols = {"amount_usd_cluster", "amount_usd"}
@@ -67,12 +71,14 @@ def grant_amount_distribution(df, grouped_df, selected_chart, selected_role, ai_
             sort_dir = st.selectbox("Sort", ["Descending", "Ascending"], index=0)
 
     # Display visualizations
-    cluster_options = grouped_df['amount_usd_cluster'].dropna().astype(str).unique().tolist()
+    cluster_options = grouped_df["amount_usd_cluster"].dropna().astype(str).unique().tolist()
     cluster_options.sort()
     if not cluster_options:
         st.info("No cluster data available.")
         return
-    selected_clusters = st.multiselect("Select USD Clusters", options=cluster_options, default=cluster_options)
+    selected_clusters = st.multiselect(
+        "Select USD Clusters", options=cluster_options, default=cluster_options
+    )
     # Persist current filter state to session for AI chart-state tool
     try:
         st.session_state["dist_metric"] = metric
@@ -85,13 +91,17 @@ def grant_amount_distribution(df, grouped_df, selected_chart, selected_role, ai_
 
     # Work on a copy to avoid chained assignment issues
     grouped_df = grouped_df.copy()
-    grouped_df['amount_usd_cluster'] = grouped_df['amount_usd_cluster'].astype(str)
+    grouped_df["amount_usd_cluster"] = grouped_df["amount_usd_cluster"].astype(str)
 
     @st.cache_data(show_spinner=False)
     def _filter_clusters(gdf: pd.DataFrame, clusters: tuple[str, ...]) -> pd.DataFrame:
-        return gdf[gdf['amount_usd_cluster'].isin(list(clusters))]
+        return gdf[gdf["amount_usd_cluster"].isin(list(clusters))]
 
-    filtered_df = _filter_clusters(grouped_df, tuple(selected_clusters)) if selected_clusters else grouped_df.iloc[0:0]
+    filtered_df = (
+        _filter_clusters(grouped_df, tuple(selected_clusters))
+        if selected_clusters
+        else grouped_df.iloc[0:0]
+    )
 
     if filtered_df.empty:
         st.info("No data for the selected clusters.")
@@ -102,13 +112,15 @@ def grant_amount_distribution(df, grouped_df, selected_chart, selected_role, ai_
     def _aggregate_distribution(fdf: pd.DataFrame, metric: str) -> tuple[pd.DataFrame, str]:
         if metric == "Total Amount":
             agg_df = (
-                fdf.groupby('amount_usd_cluster', as_index=False)['amount_usd'].sum()
+                fdf.groupby("amount_usd_cluster", as_index=False)["amount_usd"]
+                .sum()
                 .rename(columns={"amount_usd": "value"})  # type: ignore[call-arg]
             )
             label = "Total Amount (USD)"
         else:
             agg_df = (
-                fdf.groupby('amount_usd_cluster', as_index=False)['grant_key'].count()
+                fdf.groupby("amount_usd_cluster", as_index=False)["grant_key"]
+                .count()
                 .rename(columns={"grant_key": "value"})  # type: ignore[call-arg]
             )
             label = "Grant Count"
@@ -116,18 +128,18 @@ def grant_amount_distribution(df, grouped_df, selected_chart, selected_role, ai_
 
     agg, y_label = _aggregate_distribution(filtered_df, metric)
 
-    agg = agg.sort_values('value', ascending=(sort_dir == "Ascending")).head(int(top_n))
+    agg = agg.sort_values("value", ascending=(sort_dir == "Ascending")).head(int(top_n))
 
     fig = px.bar(
         agg,
-        x='amount_usd_cluster',
-        y='value',
-        color='amount_usd_cluster',
+        x="amount_usd_cluster",
+        y="value",
+        color="amount_usd_cluster",
         title=f"Grant Distribution by USD Cluster ({'Amount' if metric=='Total Amount' else 'Count'})",
     )
-    fig.update_layout(xaxis_title='USD Cluster', yaxis_title=y_label, showlegend=False)
+    fig.update_layout(xaxis_title="USD Cluster", yaxis_title=y_label, showlegend=False)
     if log_y:
-        fig.update_yaxes(type='log')
+        fig.update_yaxes(type="log")
     st.plotly_chart(fig, use_container_width=True)
 
     # AI Explainer for distribution chart
@@ -147,13 +159,16 @@ def grant_amount_distribution(df, grouped_df, selected_chart, selected_role, ai_
             },
             sample_df=filtered_df,
         )
-        render_ai_explainer(filtered_df, pre_prompt, chart_id="distribution.main", sample_df=filtered_df)
+        render_ai_explainer(
+            filtered_df, pre_prompt, chart_id="distribution.main", sample_df=filtered_df
+        )
     except Exception:
         pass
 
     # Smart recommendations panel
     try:
         from utils.recommendations import GrantRecommender
+
         context = {
             "selected_clusters": st.session_state.get("dist_selected_clusters"),
         }
@@ -211,5 +226,7 @@ def grant_amount_distribution(df, grouped_df, selected_chart, selected_role, ai_
             link = download_csv(filtered_df, "grants_distribution_filtered.csv")
             st.markdown(link, unsafe_allow_html=True)
 
-    st.markdown(""" This app was produced by [Christopher Collins](https://www.linkedin.com/in/cctopher/) using the latest methods for enabling AI to Chat with Data. It also uses the Candid API, Streamlit, Plotly, and other open-source libraries. Generative AI solutions such as OpenAI GPT-5 and Claude Opus were used to generate portions of the source code.
-                    """)
+    st.markdown(
+        """ This app was produced by [Christopher Collins](https://www.linkedin.com/in/cctopher/) using the latest methods for enabling AI to Chat with Data. It also uses the Candid API, Streamlit, Plotly, and other open-source libraries. Generative AI solutions such as OpenAI GPT-5 and Claude Opus were used to generate portions of the source code.
+                    """
+    )

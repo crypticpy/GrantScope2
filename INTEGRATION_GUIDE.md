@@ -337,3 +337,60 @@ st.markdown("""
 - **Reduced support requests**: Fewer "what does this mean?" questions
 
 This is all 100% doable in Streamlit! The key is making it feel like a friendly conversation, not a technical dashboard.
+## Code Quality: Ruff, Black, Mypy, pre-commit, and CI
+
+This repository is configured to use Ruff (lint + import sorting), Black (format), and Mypy (type checking). pre-commit runs these tools locally before each commit. A GitHub Actions workflow enforces the same checks in CI.
+
+Tools and versions
+- Ruff: defined by pre-commit hook (v0.6.8 at time of writing)
+- Black: defined by pre-commit hook (25.1.0 at time of writing)
+- Mypy: defined by pre-commit hook (v1.17.1 at time of writing)
+- Python target-version: 3.11
+
+Configuration
+- All tool configuration is consolidated in [pyproject.toml](pyproject.toml).
+- Ruff handles linting and import sorting; Black handles code formatting.
+- Mypy runs a pragmatic baseline (initially limited scope); expand coverage as code is incrementally typed.
+- Heavy or generated directories are excluded (e.g., .venv, .history, .ruru).
+
+Local setup (once per machine)
+1) Create and activate a virtual environment:
+   - macOS/Linux:
+     - python3 -m venv .venv
+     - source .venv/bin/activate
+   - Windows (PowerShell):
+     - python -m venv .venv
+     - .\.venv\Scripts\Activate.ps1
+2) Install pre-commit and hooks:
+   - pip install pre-commit
+   - pre-commit install
+
+Developer commands (workspace-relative)
+- Lint (no fixes): ruff check .
+- Autofix lint: ruff check . --fix
+- Format code: black .
+- Format check (no writes): black --check .
+- Type check: mypy
+- Run all hooks on entire repo: pre-commit run --all-files
+
+Recommended workflow
+- After changes, run: pre-commit run --all-files
+- If Black or Ruff changed files, re-run once to verify a clean pass.
+
+Continuous Integration
+- CI is configured at [.github/workflows/lint.yml](.github/workflows/lint.yml)
+- On push/PR, GitHub Actions runs:
+  - ruff check .
+  - black --check .
+  - mypy
+
+Common issues and fixes
+- Unused imports (F401): remove import or use under-underscore name to signal intent (e.g., _unused).
+- Long lines: Black automatically wraps; do not hand-wrap unless readability improves clearly.
+- Import order: Ruff isort rules auto-fix (ruff check . --fix).
+- Module-level imports not at top (E402): import at the top of the file unless there’s a compelling reason.
+- Mypy stubs: If missing type stubs for third-party libraries, prefer installing types-... packages or add targeted ignores. Expand type coverage incrementally.
+
+Scope notes
+- The initial mypy baseline targets a minimal set of files for quick adoption. Expand the [tool.mypy].files set in [pyproject.toml](pyproject.toml) gradually to cover more modules as typing improves.
+- Exclusions are kept conservative to avoid noise from generated or historical files; keep paths workspace-relative.

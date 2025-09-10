@@ -1,11 +1,19 @@
-import os, sys
-import streamlit as st
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-from utils.app_state import init_session_state, sidebar_controls, get_data, get_session_profile, is_newbie  # type: ignore
-from plots.grant_amount_heatmap import grant_amount_heatmap  # type: ignore
-from config import is_enabled  # type: ignore
-from utils.help import render_page_help_panel  # type: ignore
+import os
+import sys
 
+import streamlit as st
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+from config import is_enabled  # type: ignore
+from plots.grant_amount_heatmap import grant_amount_heatmap  # type: ignore
+from utils.app_state import (  # type: ignore
+    get_data,
+    get_session_profile,
+    init_session_state,
+    is_newbie,
+    sidebar_controls,
+)
+from utils.help import render_page_help_panel  # type: ignore
 
 st.set_page_config(page_title="GrantScope — Heatmap", page_icon=":fire:", layout="wide")
 

@@ -8,10 +8,10 @@ APIs:
 
 from __future__ import annotations
 
-from typing import List, Optional, TYPE_CHECKING, Dict, Any
-from html import escape
 import re
 import unicodedata
+from html import escape
+from typing import TYPE_CHECKING, Any
 
 try:
     import streamlit as st  # type: ignore
@@ -27,9 +27,9 @@ except Exception:  # pragma: no cover
 # Flexible type imports to avoid circular analysis issues in some environments
 if TYPE_CHECKING:
     try:
-        from GrantScope.advisor.schemas import ReportBundle, FigureArtifact  # type: ignore
+        from GrantScope.advisor.schemas import FigureArtifact, ReportBundle  # type: ignore
     except Exception:  # pragma: no cover
-        from advisor.schemas import ReportBundle, FigureArtifact  # type: ignore
+        from advisor.schemas import FigureArtifact, ReportBundle  # type: ignore
 
 try:
     from GrantScope.utils.utils import download_text  # type: ignore
@@ -53,6 +53,7 @@ def _truncate_text(text: str, max_len: int = 600) -> str:
         return s
     return s[: max_len - 15].rstrip() + "... [truncated]"
 
+
 def _redact_pii(text: str) -> str:
     """
     Redact common PII patterns such as emails and phone numbers.
@@ -70,8 +71,11 @@ def _redact_pii(text: str) -> str:
     # Fallback for plain ASCII hyphenated EIN (defensive)
     s = re.sub(r"\d{2}-\d{7}", "[redacted EIN]", s)
     # US-like phone numbers (require area code to avoid matching 7-digit sequences)
-    s = re.sub(r"\b(?:\+?1[-.\s]?)?(?:\(?\d{3}\)?[-.\s]?)\d{3}[-.\s]?\d{4}\b", "[redacted phone]", s)
+    s = re.sub(
+        r"\b(?:\+?1[-.\s]?)?(?:\(?\d{3}\)?[-.\s]?)\d{3}[-.\s]?\d{4}\b", "[redacted phone]", s
+    )
     return s
+
 
 def _safe_field(val: Any, max_len: int = 600) -> str:
     """Stringify, redact, and truncate a value."""
@@ -80,6 +84,7 @@ def _safe_field(val: Any, max_len: int = 600) -> str:
     except Exception:
         s = ""
     return _truncate_text(_redact_pii(s), max_len=max_len)
+
 
 def _markdown_to_html_basic(md: str) -> str:
     """
@@ -115,12 +120,13 @@ def _markdown_to_html_basic(md: str) -> str:
         out.append("</ul>")
     return "\n".join(out)
 
+
 def build_workbook_bundle(
-    profile: Optional[Dict[str, Any]],
-    planner: Optional[Dict[str, Any]],
-    budget: Optional[Dict[str, Any]],
-    insights: Optional[Dict[str, Any]],
-) -> Dict[str, Any]:
+    profile: dict[str, Any] | None,
+    planner: dict[str, Any] | None,
+    budget: dict[str, Any] | None,
+    insights: dict[str, Any] | None,
+) -> dict[str, Any]:
     """
     Assemble a beginner-friendly workbook bundle.
 
@@ -170,11 +176,17 @@ def build_workbook_bundle(
                 total = float(budget.get("budget_grand_total"))
                 bg_bits.append(f"- Estimated Total: ${total:,.0f}")
             except Exception:
-                bg_bits.append(f"- Estimated Total: {_safe_field(budget.get('budget_grand_total'))}")
+                bg_bits.append(
+                    f"- Estimated Total: {_safe_field(budget.get('budget_grand_total'))}"
+                )
         if budget.get("budget_indirect_rate_pct") is not None:
-            bg_bits.append(f"- Indirect Rate: {_safe_field(budget.get('budget_indirect_rate_pct'))}%")
+            bg_bits.append(
+                f"- Indirect Rate: {_safe_field(budget.get('budget_indirect_rate_pct'))}%"
+            )
         if budget.get("budget_match_available") is not None:
-            bg_bits.append(f"- Match Available: {'Yes' if bool(budget.get('budget_match_available')) else 'No'}")
+            bg_bits.append(
+                f"- Match Available: {'Yes' if bool(budget.get('budget_match_available')) else 'No'}"
+            )
         if isinstance(budget.get("budget_flags"), list) and budget.get("budget_flags"):
             flags = ", ".join([_safe_field(x) for x in budget.get("budget_flags")])
             bg_bits.append(f"- Flags: {flags}")
@@ -286,7 +298,7 @@ def build_workbook_bundle(
         html = None
 
     # Optional assets (reserved for future: images/tables)
-    assets: Dict[str, bytes] = {}
+    assets: dict[str, bytes] = {}
 
     return {"markdown": markdown, "html": html, "assets": assets}
 
@@ -305,7 +317,7 @@ def _clean_interpretation_text(text: str, for_markdown: bool = True) -> str:
         t = str(text)
 
     # Convert NBSP variants to normal spaces
-    t = t.replace("\u00A0", " ").replace("\u202F", " ")
+    t = t.replace("\u00a0", " ").replace("\u202f", " ")
 
     # Remove duplicate leading label
     t = re.sub(r"^\s*what\s+this\s+means\s*:\s*", "", t, flags=re.IGNORECASE)
@@ -321,6 +333,7 @@ def _clean_interpretation_text(text: str, for_markdown: bool = True) -> str:
         # Characters: \ ` * _ { } [ ] ( ) # + - . ! | >
         def _esc(m: re.Match) -> str:
             return "\\" + m.group(0)
+
         t = re.sub(r"([\\`*_{}\[\]()#+\-\.!|>])", _esc, t)
     return t
 
@@ -342,7 +355,7 @@ def _clean_narrative_md(text: str) -> str:
         t = str(text)
 
     # NBSP variants to normal spaces
-    t = t.replace("\u00A0", " ").replace("\u202F", " ")
+    t = t.replace("\u00a0", " ").replace("\u202f", " ")
 
     # Do NOT force spaces after commas inside numbers; only add a space after a comma when the next char is non-digit and non-space
     t = re.sub(r",(?=\S)(?=[^0-9])", ", ", t)
@@ -351,7 +364,7 @@ def _clean_narrative_md(text: str) -> str:
 
     # Escape dollar signs to prevent LaTeX rendering in Streamlit
     t = re.sub(r"\$", r"\\$", t)
-    
+
     # Escape underscores/asterisks between word chars to prevent accidental markdown italics/bold
     t = re.sub(r"(?<=\w)_(?=\w)", r"\\_", t)
     t = re.sub(r"(?<=\w)\*(?=\w)", r"\\*", t)
@@ -383,7 +396,7 @@ def _figure_html(fig: FigureArtifact) -> str:
 
 def render_report_html(report: ReportBundle) -> str:
     """Compose a single-file HTML document with inline CSS and embedded figures."""
-    parts: List[str] = []
+    parts: list[str] = []
     parts.append(
         """
 <!doctype html>
@@ -441,7 +454,9 @@ def render_report_html(report: ReportBundle) -> str:
         parts.append('<div class="section">')
         parts.append("<h2>Data Evidence</h2>")
         for dp in report.datapoints:
-            parts.append(f'<div class="dp"><strong>{escape(dp.id)}</strong>: {escape(dp.title)}</div>')
+            parts.append(
+                f'<div class="dp"><strong>{escape(dp.id)}</strong>: {escape(dp.title)}</div>'
+            )
             try:
                 if dp.table_md:
                     parts.append(f'<pre class="md-pre">{escape(dp.table_md)}</pre>')
@@ -461,7 +476,11 @@ def render_report_html(report: ReportBundle) -> str:
         if report.recommendations.funder_candidates:
             parts.append("<h3>Funder Candidates (Top 5)</h3><ol class='rec-list'>")
             for fc in report.recommendations.funder_candidates[:5]:
-                grounded = f" — cites {', '.join(fc.grounded_dp_ids)}" if getattr(fc, "grounded_dp_ids", None) else ""
+                grounded = (
+                    f" — cites {', '.join(fc.grounded_dp_ids)}"
+                    if getattr(fc, "grounded_dp_ids", None)
+                    else ""
+                )
                 parts.append(
                     f"<li><strong>{escape(fc.name)}</strong> (score {fc.score:.2f}) — "
                     f"{escape(fc.rationale)}{escape(grounded)}</li>"
@@ -470,7 +489,11 @@ def render_report_html(report: ReportBundle) -> str:
         if report.recommendations.response_tuning:
             parts.append("<h3>Response Tuning Tips</h3><ul class='rec-list'>")
             for tip in report.recommendations.response_tuning[:5]:
-                grounded = f" — cites {', '.join(tip.grounded_dp_ids)}" if getattr(tip, "grounded_dp_ids", None) else ""
+                grounded = (
+                    f" — cites {', '.join(tip.grounded_dp_ids)}"
+                    if getattr(tip, "grounded_dp_ids", None)
+                    else ""
+                )
                 parts.append(f"<li>{escape(tip.text)}{escape(grounded)}</li>")
             parts.append("</ul>")
         parts.append("</div>")
@@ -534,7 +557,11 @@ def render_report_streamlit(report: ReportBundle) -> None:
             for fig in report.figures:
                 label = (fig.label or fig.id) or "Figure"
                 if fig.png_base64:
-                    st.image(f"data:image/png;base64,{fig.png_base64}", caption=label, use_container_width=True)
+                    st.image(
+                        f"data:image/png;base64,{fig.png_base64}",
+                        caption=label,
+                        use_container_width=True,
+                    )
                 elif fig.html:
                     try:
                         if components:
@@ -542,7 +569,9 @@ def render_report_streamlit(report: ReportBundle) -> None:
                         else:
                             raise RuntimeError("components unavailable")
                     except Exception:
-                        st.caption(f"[Interactive figure not supported in this environment for {label}]")
+                        st.caption(
+                            f"[Interactive figure not supported in this environment for {label}]"
+                        )
                 # Per-chart interpretation under the chart when available
                 try:
                     text2 = getattr(fig, "interpretation_text", None)
@@ -645,4 +674,7 @@ def render_report_streamlit(report: ReportBundle) -> None:
                     else:
                         raise RuntimeError("components unavailable")
                 except Exception:
-                    st.code(html_text[:5000] + ("\n... (truncated)" if len(html_text) > 5000 else ""), language="html")
+                    st.code(
+                        html_text[:5000] + ("\n... (truncated)" if len(html_text) > 5000 else ""),
+                        language="html",
+                    )

@@ -8,12 +8,12 @@ It aliases GrantScope.<subpkg> to the corresponding top-level package/module
 
 This avoids relocating the source tree and keeps runtime imports and tests happy.
 """
+
 from __future__ import annotations
 
 import importlib
 import sys
-from types import ModuleType
-from typing import Iterable
+from collections.abc import Iterable
 
 _ALIAS_SUBPACKAGES: Iterable[str] = (
     "advisor",
@@ -39,4 +39,3 @@ def _alias(name: str) -> None:
 
 for _n in _ALIAS_SUBPACKAGES:
     _alias(_n)
-

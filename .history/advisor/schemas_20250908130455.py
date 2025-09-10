@@ -11,8 +11,10 @@ import hashlib
 import json as _json
 
 from pydantic import BaseModel, Field
+
 try:
     from pydantic import ConfigDict  # type: ignore
+
     _P2 = True
 except ImportError:  # pydantic v1
     ConfigDict = None  # type: ignore
@@ -20,9 +22,10 @@ except ImportError:  # pydantic v1
 
 
 class _BaseModel(BaseModel):
-    if 'ConfigDict' in globals() and _P2:
+    if "ConfigDict" in globals() and _P2:
         model_config = ConfigDict(extra="ignore")  # type: ignore
     else:
+
         class Config:
             extra = "ignore"
 
@@ -136,10 +139,12 @@ class ReportSection(_BaseModel):
 
 class ChartSummary(_BaseModel):
     """Lightweight, model-safe summary of a chart for LLM interpretation."""
+
     label: str = ""
     highlights: List[str] = Field(default_factory=list)
     stats: Dict[str, Any] = Field(default_factory=dict)
     notes: str = ""
+
 
 class FigureArtifact(_BaseModel):
     id: str
@@ -178,10 +183,13 @@ class ReportBundle(_BaseModel):
         data = _json.loads(text)
         return cls(**data)
 
+
 # Ensure a single module identity for schemas regardless of import path
 from contextlib import suppress as _suppress  # type: ignore
+
 with _suppress(Exception):
     import sys as _sys  # type: ignore
+
     _mod = _sys.modules.get(__name__)
     if _mod is not None:
         _sys.modules.setdefault("advisor.schemas", _mod)

@@ -12,9 +12,8 @@ Optional helpers for UI:
 
 from __future__ import annotations
 
-from typing import Any
-
 import json as _json
+from typing import Any
 
 try:
     # Local/relative import path when running inside the GrantScope package

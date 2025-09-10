@@ -1,0 +1,26 @@
+# Global excludes to avoid heavy history and virtualenv noise
+exclude: ^(\.venv/|\.history/|\.ruru/|build/|dist/|\.git/)
+
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.8
+    hooks:
+      - id: ruff
+        args: ["--fix"]
+      
+
+  - repo: https://github.com/psf/black
+    rev: 25.1.0
+    hooks:
+      - id: black
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.17.1
+    hooks:
+      - id: mypy
+        pass_filenames: false
+        args:
+          - --pretty
+          - --python-version=3.11
+          - --config=pyproject.toml
+          - loaders/data_loader.py

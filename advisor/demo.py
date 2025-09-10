@@ -9,10 +9,9 @@ APIs:
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
-
 import json as _json
 import os
+from typing import Any
 
 # Flexible imports so this works both as a package and direct module
 try:
@@ -21,7 +20,7 @@ except Exception:  # pragma: no cover
     from advisor.schemas import InterviewInput  # type: ignore
 
 
-DEMO_INTERVIEW_DEFAULT: Dict[str, Any] = {
+DEMO_INTERVIEW_DEFAULT: dict[str, Any] = {
     "program_area": "Youth education and after-school STEM",
     "populations": ["youth", "students", "low_income"],
     "geography": ["TX", "US"],
@@ -39,7 +38,7 @@ DEMO_INTERVIEW_DEFAULT: Dict[str, Any] = {
 }
 
 
-def get_demo_responses_dict() -> Dict[str, Any]:
+def get_demo_responses_dict() -> dict[str, Any]:
     """Return a dict suitable for pre-filling the interview form."""
     return dict(DEMO_INTERVIEW_DEFAULT)
 
@@ -49,7 +48,9 @@ def get_demo_interview() -> InterviewInput:
     return InterviewInput(**get_demo_responses_dict())
 
 
-def load_demo_responses_json(path: str = "GrantScope/advisor/demo_responses.json") -> Optional[Dict[str, Any]]:
+def load_demo_responses_json(
+    path: str = "GrantScope/advisor/demo_responses.json",
+) -> dict[str, Any] | None:
     """Load an optional JSON file that can override the built-in demo responses.
 
     Returns:
@@ -63,7 +64,7 @@ def load_demo_responses_json(path: str = "GrantScope/advisor/demo_responses.json
                 path = alt
             else:
                 return None
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             data = _json.load(f)
         if isinstance(data, dict):
             return data

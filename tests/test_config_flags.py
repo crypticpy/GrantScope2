@@ -3,7 +3,6 @@ Tests for config flags functionality.
 """
 
 import os
-import pytest
 from unittest.mock import patch
 
 import config
@@ -21,7 +20,7 @@ def test_is_enabled_helper():
     """Test the is_enabled helper function."""
     # Test with existing flag
     assert config.is_enabled("GS_ENABLE_CHAT_STREAMING") is False
-    
+
     # Test with nonexistent flag
     assert config.is_enabled("NONEXISTENT_FLAG") is False
 
@@ -29,18 +28,18 @@ def test_is_enabled_helper():
 def test_feature_flags_dict():
     """Test that feature_flags dict contains all expected flags."""
     flags = config.feature_flags()
-    
+
     expected_flags = {
         "GS_ENABLE_CHAT_STREAMING",
-        "GS_ENABLE_LEGACY_ROUTER", 
+        "GS_ENABLE_LEGACY_ROUTER",
         "GS_ENABLE_NEWBIE_MODE",
         "GS_ENABLE_PLAIN_HELPERS",
         "GS_ENABLE_NEW_PAGES",
-        "GS_ENABLE_AI_AUGMENTATION"
+        "GS_ENABLE_AI_AUGMENTATION",
     }
-    
+
     assert set(flags.keys()) == expected_flags
-    
+
     # All should be False by default
     for flag, value in flags.items():
         assert value is False
@@ -69,14 +68,14 @@ def test_env_override_falsy():
 
 def test_require_flag_enabled():
     """Test require_flag returns True when flag is enabled."""
-    with patch('config.is_enabled', return_value=True):
+    with patch("config.is_enabled", return_value=True):
         result = config.require_flag("TEST_FLAG", "Test message")
         assert result is True
 
 
 def test_require_flag_disabled():
     """Test require_flag returns False when flag is disabled."""
-    with patch('config.is_enabled', return_value=False):
+    with patch("config.is_enabled", return_value=False):
         result = config.require_flag("TEST_FLAG", "Test message")
         assert result is False
 

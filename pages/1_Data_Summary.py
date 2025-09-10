@@ -1,19 +1,27 @@
-import os, sys
+import os
+import sys
+
 import streamlit as st
+
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-from utils.app_state import init_session_state, sidebar_controls, get_data, get_session_profile, is_newbie  # type: ignore
-from plots.data_summary import data_summary  # type: ignore
 from config import is_enabled  # type: ignore
+from plots.data_summary import data_summary  # type: ignore
+from utils.app_state import (  # type: ignore
+    get_data,
+    get_session_profile,
+    init_session_state,
+    is_newbie,
+    sidebar_controls,
+)
 from utils.help import render_page_help_panel  # type: ignore
 from utils.navigation import (  # type: ignore
-    push_breadcrumb,
-    get_recommended_next_page,
-    get_page_label,
-    get_breadcrumbs,
     compute_continue_state,
     continue_to,
+    get_breadcrumbs,
+    get_page_label,
+    get_recommended_next_page,
+    push_breadcrumb,
 )
-
 
 st.set_page_config(page_title="GrantScope — Data Summary", page_icon=":bar_chart:")
 

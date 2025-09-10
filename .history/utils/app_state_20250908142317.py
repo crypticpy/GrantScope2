@@ -15,6 +15,7 @@ OrgType = Literal["nonprofit", "school", "business", "government", "other"]
 @dataclass
 class UserProfile:
     """User profile containing preferences, experience level, and onboarding state."""
+
     user_id: str
     experience_level: ExperienceLevel
     org_type: OrgType
@@ -53,8 +54,8 @@ def role_label(experience_level: ExperienceLevel) -> str:
     """Convert experience level to user-facing label."""
     labels = {
         "new": "I'm new to grants",
-        "some": "I have some experience", 
-        "pro": "I'm a grant professional"
+        "some": "I have some experience",
+        "pro": "I'm a grant professional",
     }
     return labels[experience_level]
 
@@ -132,7 +133,7 @@ def sidebar_controls():
                 st.sidebar.markdown("**Experience:** " + role_label(experience_level))
             except Exception:
                 pass
-        
+
         # Base pages available to all users
         pages = {
             "Grant Advisor Interview": "0_Grant_Advisor_Interview.py",
@@ -145,7 +146,7 @@ def sidebar_controls():
             "General Analysis of Relationships": "7_General_Analysis_of_Relationships.py",
             "Top Categories by Unique Grant Count": "8_Top_Categories_Unique_Grants.py",
         }
-        
+
         # Add newbie-friendly pages if enabled
         if config is not None and config.is_enabled("GS_ENABLE_NEW_PAGES"):
             new_pages = {
@@ -154,18 +155,20 @@ def sidebar_controls():
                 "Success Stories": "11_Success_Stories.py",
                 "Budget Reality Check": "12_Budget_Reality_Check.py",
             }
-            
+
             # Filter pages based on experience level
             if experience_level == "new":
                 # Newbies get all the helpful tools
                 pages.update(new_pages)
             elif experience_level == "some":
                 # Experienced users get planning tools
-                pages.update({
-                    "Project Planner": "9_Project_Planner.py",
-                    "Timeline Advisor": "10_Timeline_Advisor.py",
-                    "Budget Reality Check": "12_Budget_Reality_Check.py",
-                })
+                pages.update(
+                    {
+                        "Project Planner": "9_Project_Planner.py",
+                        "Timeline Advisor": "10_Timeline_Advisor.py",
+                        "Budget Reality Check": "12_Budget_Reality_Check.py",
+                    }
+                )
             # Pros don't get the guided pages by default
 
         # The explicit "Go to page" dropdown and single-page link were removed
@@ -260,21 +263,23 @@ def sidebar_controls():
     if config is not None and config.is_enabled("GS_ENABLE_PLAIN_HELPERS"):
         try:
             from utils.help import render_glossary_search
+
             render_glossary_search()
         except Exception:
             pass
-    
+
     # Add reset onboarding button for testing/user preference
     if config is not None and config.is_enabled("GS_ENABLE_NEWBIE_MODE") and profile:
         st.sidebar.markdown("---")
         if st.sidebar.button("🔄 Reset Setup", help="Start the setup process again"):
             try:
                 from utils.onboarding import OnboardingWizard
+
                 OnboardingWizard.reset_onboarding()
                 st.rerun()
             except Exception:
                 pass
-    
+
     # Flexible spacer to push the chat panel to the bottom of the sidebar viewport
     try:
         st.sidebar.markdown('<div class="gs-sidebar-spacer"></div>', unsafe_allow_html=True)
@@ -295,7 +300,7 @@ def get_data(uploaded_file):
         if uploaded_file is not None:
             df, grouped_df = _load_and_preprocess(None, uploaded_file)
         else:
-            df, grouped_df = _load_and_preprocess('data/sample.json', None)
+            df, grouped_df = _load_and_preprocess("data/sample.json", None)
         return df, grouped_df, None
     except (OSError, ValueError, KeyError) as e:
         return None, None, str(e)

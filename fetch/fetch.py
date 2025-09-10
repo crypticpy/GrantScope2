@@ -1,8 +1,8 @@
-import requests
-import time
 import json
 import os
-from typing import Tuple, Sequence, Optional
+import time
+
+import requests
 from tqdm import tqdm
 
 # Prefer centralized config for secrets (works when run via package or as script)
@@ -13,6 +13,7 @@ except Exception:
         import config  # fallback when executed inside GrantScope/ directly
     except Exception:
         config = None  # type: ignore
+
 
 def get_grants_transactions(
     page_number,
@@ -65,7 +66,7 @@ def get_grants_transactions(
     )
 
     # Resolve API key with precedence via centralized config (st.secrets > env > .env)
-    candid_key: Optional[str] = None
+    candid_key: str | None = None
     if config is not None:
         try:
             candid_key = config.get_candid_key()
@@ -102,7 +103,7 @@ def get_grants_transactions(
             if response.status_code == 429:
                 if attempt < retries:
                     # Exponential backoff with jitter-free simple growth
-                    sleep_s = backoff * (2 ** attempt)
+                    sleep_s = backoff * (2**attempt)
                     time.sleep(sleep_s)
                     attempt += 1
                     continue
@@ -117,11 +118,12 @@ def get_grants_transactions(
 
         except requests.exceptions.RequestException as e:
             if attempt < retries:
-                sleep_s = backoff * (2 ** attempt)
+                sleep_s = backoff * (2**attempt)
                 time.sleep(sleep_s)
                 attempt += 1
                 continue
             raise Exception(f"Error getting grants transactions after retries: {e}")
+
 
 def validate_input(value, value_type, min_value=None, max_value=None):
     try:
@@ -134,6 +136,7 @@ def validate_input(value, value_type, min_value=None, max_value=None):
     except ValueError as e:
         raise ValueError(f"Invalid input: {e}")
 
+
 def get_unique_file_name(file_name):
     base_name, extension = os.path.splitext(file_name)
     counter = 1
@@ -142,29 +145,46 @@ def get_unique_file_name(file_name):
         counter += 1
     return file_name
 
+
 def main():
     calls_per_minute = 9
     delay = 60 / calls_per_minute
 
     print("Welcome to the Candid API Grants Data Fetcher!")
-    print("This tool will guide you through the process of fetching grants data from the Candid API.")
+    print(
+        "This tool will guide you through the process of fetching grants data from the Candid API."
+    )
 
     try:
-        start_year = validate_input(input("Enter the start year: "), int, min_value=1900, max_value=2100)
-        end_year = validate_input(input("Enter the end year: "), int, min_value=start_year, max_value=2100)
+        start_year = validate_input(
+            input("Enter the start year: "), int, min_value=1900, max_value=2100
+        )
+        end_year = validate_input(
+            input("Enter the end year: "), int, min_value=start_year, max_value=2100
+        )
         year_range = (start_year, end_year)
 
-        min_amt = validate_input(input("Enter the minimum dollar amount (e.g., 25000): "), int, min_value=0)
-        max_amt = validate_input(input("Enter the maximum dollar amount (e.g., 10000000): "), int, min_value=min_amt)
+        min_amt = validate_input(
+            input("Enter the minimum dollar amount (e.g., 25000): "), int, min_value=0
+        )
+        max_amt = validate_input(
+            input("Enter the maximum dollar amount (e.g., 10000000): "), int, min_value=min_amt
+        )
         dollar_range = (min_amt, max_amt)
 
         subjects = input("Enter the subjects (comma-separated, e.g., SJ02,SJ05): ").split(",")
-        populations = input("Enter the populations (comma-separated, e.g., PA010000,PC040000): ").split(",")
-        locations = input("Enter the locations (comma-separated geonameid, e.g., 4671654,4736286): ").split(",")
-        transaction_types = input("Enter the transaction types (comma-separated, e.g., TA,TG): ").split(",")
+        populations = input(
+            "Enter the populations (comma-separated, e.g., PA010000,PC040000): "
+        ).split(",")
+        locations = input(
+            "Enter the locations (comma-separated geonameid, e.g., 4671654,4736286): "
+        ).split(",")
+        transaction_types = input(
+            "Enter the transaction types (comma-separated, e.g., TA,TG): "
+        ).split(",")
 
         num_pages = input("Enter the number of pages to retrieve (or 'all' for all pages): ")
-        if num_pages.lower() == 'all':
+        if num_pages.lower() == "all":
             num_pages = None
         else:
             num_pages = validate_input(num_pages, int, min_value=1)
@@ -177,15 +197,28 @@ def main():
 
         print("Fetching grants data...")
         while True:
-            grants_data = get_grants_transactions(page_number, year_range, dollar_range, subjects, populations, locations, transaction_types)
+            grants_data = get_grants_transactions(
+                page_number,
+                year_range,
+                dollar_range,
+                subjects,
+                populations,
+                locations,
+                transaction_types,
+            )
             all_grants.extend(grants_data["grants"])
 
             total_pages = grants_data["total_pages"]
-            progress_bar = tqdm(total=total_pages, unit='page', desc='Progress', initial=page_number)
+            progress_bar = tqdm(
+                total=total_pages, unit="page", desc="Progress", initial=page_number
+            )
 
-            if num_pages is None and total_pages == page_number:
-                break
-            elif num_pages is not None and page_number == num_pages:
+            if (
+                num_pages is None
+                and total_pages == page_number
+                or num_pages is not None
+                and page_number == num_pages
+            ):
                 break
 
             page_number += 1
@@ -204,6 +237,7 @@ def main():
         print(f"Error: {e}")
     except Exception as e:
         print(f"An error occurred: {e}")
+
 
 if __name__ == "__main__":
     main()

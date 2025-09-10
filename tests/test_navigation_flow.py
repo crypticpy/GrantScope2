@@ -1,6 +1,5 @@
 import sys
 from types import ModuleType
-import pytest
 
 
 def _install_fake_streamlit(monkeypatch):
@@ -10,7 +9,7 @@ def _install_fake_streamlit(monkeypatch):
     """
     st_mod = ModuleType("streamlit")
     # Minimal session_state
-    setattr(st_mod, "session_state", {})
+    st_mod.session_state = {}
 
     # No-op UI helpers possibly touched by navigation fallbacks
     def _info(*_args, **_kwargs):
@@ -21,11 +20,11 @@ def _install_fake_streamlit(monkeypatch):
 
     # Sidebar container placeholder
     sidebar = ModuleType("streamlit.sidebar")
-    setattr(sidebar, "page_link", _page_link)
-    setattr(st_mod, "sidebar", sidebar)
+    sidebar.page_link = _page_link
+    st_mod.sidebar = sidebar
 
-    setattr(st_mod, "info", _info)
-    setattr(st_mod, "page_link", _page_link)
+    st_mod.info = _info
+    st_mod.page_link = _page_link
 
     monkeypatch.setitem(sys.modules, "streamlit", st_mod)
     return st_mod
@@ -56,6 +55,7 @@ class TestNavigationFlow:
 
         # Last/next slug sync
         import sys
+
         ss = getattr(sys.modules.get("streamlit"), "session_state", {})
         assert ss.get("last_page_slug") == "grant_amount_scatter"
         # Next after scatter should be Heatmap per mapping

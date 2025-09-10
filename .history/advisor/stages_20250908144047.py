@@ -105,9 +105,7 @@ def _chat_completion_json(user_content: str) -> Any:
     try:
         return _json_loads(s)
     except Exception as e:
-        raise ValueError(
-            f"Assistant did not return valid JSON: {e}. Raw: {txt[:240]}"
-        ) from e
+        raise ValueError(f"Assistant did not return valid JSON: {e}. Raw: {txt[:240]}") from e
 
 
 @st.cache_data(show_spinner=True)
@@ -189,7 +187,12 @@ def _stage2_plan_cached(key: str, needs_dict: Dict[str, Any]) -> Dict[str, Any]:
                 },
                 {
                     "tool": "df_pivot_table",
-                    "params": {"index": ["year_issued"], "value": "amount_usd", "agg": "sum", "top": 15},
+                    "params": {
+                        "index": ["year_issued"],
+                        "value": "amount_usd",
+                        "agg": "sum",
+                        "top": 15,
+                    },
                     "title": "Funding Trends Over Time",
                 },
                 {
@@ -199,7 +202,11 @@ def _stage2_plan_cached(key: str, needs_dict: Dict[str, Any]) -> Dict[str, Any]:
                 },
                 {
                     "tool": "df_groupby_sum",
-                    "params": {"by": ["grant_subject_tran", "grant_population_tran"], "value": "amount_usd", "n": 12},
+                    "params": {
+                        "by": ["grant_subject_tran", "grant_population_tran"],
+                        "value": "amount_usd",
+                        "n": 12,
+                    },
                     "title": "Subject-Population Intersection Analysis",
                 },
                 {
@@ -210,7 +217,7 @@ def _stage2_plan_cached(key: str, needs_dict: Dict[str, Any]) -> Dict[str, Any]:
             ],
             "narrative_outline": [
                 "Executive Summary",
-                "Funding Landscape Analysis", 
+                "Funding Landscape Analysis",
                 "Key Funders and Players",
                 "Subject Area Insights",
                 "Target Population Analysis",
@@ -218,20 +225,24 @@ def _stage2_plan_cached(key: str, needs_dict: Dict[str, Any]) -> Dict[str, Any]:
                 "Temporal Trends",
                 "Strategic Recommendations",
                 "Implementation Guidance",
-                "Next Steps"
+                "Next Steps",
             ],
         }
 
 
 @st.cache_data(show_spinner=True)
-def _stage4_synthesize_cached(key: str, plan_dict: Dict[str, Any], dps_index: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def _stage4_synthesize_cached(
+    key: str, plan_dict: Dict[str, Any], dps_index: List[Dict[str, Any]]
+) -> List[Dict[str, Any]]:
     try:
         obj = _chat_completion_json(stage4_synthesize_user(plan_dict, dps_index))
         if isinstance(obj, list):
             clean: List[Dict[str, Any]] = []
             for it in obj:
                 if isinstance(it, dict) and "title" in it and "markdown_body" in it:
-                    clean.append({"title": str(it["title"]), "markdown_body": str(it["markdown_body"])})
+                    clean.append(
+                        {"title": str(it["title"]), "markdown_body": str(it["markdown_body"])}
+                    )
             if clean:
                 # Ensure minimum 8 sections
                 return _ensure_min_sections(clean, dps_index)
@@ -240,47 +251,67 @@ def _stage4_synthesize_cached(key: str, plan_dict: Dict[str, Any], dps_index: Li
     # Fallback with deterministic 8-section template
     return _generate_deterministic_sections(dps_index)
 
-def _ensure_min_sections(sections: List[Dict[str, Any]], dps_index: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+
+def _ensure_min_sections(
+    sections: List[Dict[str, Any]], dps_index: List[Dict[str, Any]]
+) -> List[Dict[str, Any]]:
     """Ensure minimum 8 sections with deterministic fills if needed."""
     if len(sections) >= 8:
         return sections
-    
+
     # Add deterministic sections to reach minimum of 8
     while len(sections) < 8:
         missing_section_type = _get_missing_section_type(sections)
         new_section = _generate_section_by_type(missing_section_type, dps_index, sections)
         sections.append(new_section)
-    
+
     return sections
+
 
 def _get_missing_section_type(sections: List[Dict[str, Any]]) -> str:
     """Determine what type of section is missing."""
     existing_titles = [s.get("title", "").lower() for s in sections]
-    
+
     section_types = [
-        "overview", "funding patterns", "key players", "populations",
-        "geographies", "time trends", "actionable insights", "next steps",
-        "risk factors", "opportunities", "recommendations", "conclusion"
+        "overview",
+        "funding patterns",
+        "key players",
+        "populations",
+        "geographies",
+        "time trends",
+        "actionable insights",
+        "next steps",
+        "risk factors",
+        "opportunities",
+        "recommendations",
+        "conclusion",
     ]
-    
+
     for section_type in section_types:
         if not any(section_type in title for title in existing_titles):
             return section_type
-    
+
     # If all common types are covered, add a generic one
     return f"additional_insights_{len(sections) + 1}"
 
-def _generate_section_by_type(section_type: str, dps_index: List[Dict[str, Any]], existing_sections: List[Dict[str, Any]]) -> Dict[str, Any]:
+
+def _generate_section_by_type(
+    section_type: str, dps_index: List[Dict[str, Any]], existing_sections: List[Dict[str, Any]]
+) -> Dict[str, Any]:
     """Generate a section of a specific type with deterministic content."""
     title = section_type.title().replace("_", " ")
-    
+
     # Create a citation string from datapoints
     citations = ""
     if dps_index:
         # Use up to 3 datapoints for citations
         cited_dps = dps_index[:3]
-        citations = " (Grounded in " + ", ".join([f"{dp.get('title', '')} ({dp.get('id', '')})" for dp in cited_dps]) + ")"
-    
+        citations = (
+            " (Grounded in "
+            + ", ".join([f"{dp.get('title', '')} ({dp.get('id', '')})" for dp in cited_dps])
+            + ")"
+        )
+
     # Generate content based on section type
     content_map = {
         "overview": (
@@ -352,57 +383,58 @@ def _generate_section_by_type(section_type: str, dps_index: List[Dict[str, Any]]
             "This analysis provides a foundation for strategic grant-seeking activities. "
             "Success in securing funding requires both data-driven prospect identification and relationship-building efforts. "
             "Organizations should view funder engagement as a long-term investment in sustainability rather than a transactional activity."
-        )
+        ),
     }
-    
+
     # Default content if section type not specifically mapped
     default_content = (
         f"This section provides additional analysis on {section_type.replace('_', ' ')}. "
         "The data analysis draws on available datapoints to offer actionable guidance for grant-seeking strategies. "
         "Organizations should consider these findings in the context of their specific mission and capacity."
     )
-    
+
     content = content_map.get(section_type.lower(), default_content)
-    
-    return {
-        "title": title,
-        "markdown_body": content
-    }
+
+    return {"title": title, "markdown_body": content}
+
 
 def _generate_deterministic_sections(dps_index: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """Generate a deterministic set of 8 sections when LLM fails."""
     sections = []
     section_config = [
         ("Overview of Your Funding Opportunities", "overview"),
-        ("Funding Patterns and Landscape", "funding_patterns"), 
+        ("Funding Patterns and Landscape", "funding_patterns"),
         ("Target Populations Analysis", "populations"),
         ("Geographies and Funding Distribution", "geographies"),
         ("Key Funders to Contact", "key_players"),
         ("Actionable Insights for Success", "actionable_insights"),
         ("Time Trends and Opportunities", "time_trends"),
-        ("Next Steps and Recommendations", "next_steps")
+        ("Next Steps and Recommendations", "next_steps"),
     ]
-    
+
     for title, section_type in section_config:
         section = _generate_section_by_type(section_type, dps_index, sections)
         # Override title to be more user-friendly
         section["title"] = title
         sections.append(section)
-    
+
     return sections
 
-def _generate_municipal_section(title: str, section_type: str, dps_index: List[Dict[str, Any]]) -> Dict[str, Any]:
+
+def _generate_municipal_section(
+    title: str, section_type: str, dps_index: List[Dict[str, Any]]
+) -> Dict[str, Any]:
     """Generate user-friendly sections for municipal employees."""
-    
+
     # Extract useful data points for context
     data_context = ""
     if dps_index:
         sample_dps = dps_index[:2]  # Use first 2 datapoints for context
         for dp in sample_dps:
-            if dp.get('table_md'):
+            if dp.get("table_md"):
                 data_context += f"Based on our analysis of grant data (Source: {dp.get('title', 'Data Analysis')}), "
                 break
-    
+
     content_templates = {
         "funding_landscape": f"""
 ## Your Funding Landscape
@@ -419,7 +451,6 @@ def _generate_municipal_section(title: str, section_type: str, dps_index: List[D
 
 **Quick Tip:** Start with local foundations first. They know your community and are often easier to reach than large national foundations.
 """,
-        
         "funder_types": f"""
 ## Types of Funders to Contact
 
@@ -443,7 +474,6 @@ def _generate_municipal_section(title: str, section_type: str, dps_index: List[D
 
 **What This Means for You:** Match your project to the right funder type. Need $100,000 for a new program? Focus on private foundations. Need $10,000 for equipment? Try corporate giving.
 """,
-        
         "budget_guidance": f"""
 ## How Much Money to Ask For
 
@@ -469,7 +499,6 @@ def _generate_municipal_section(title: str, section_type: str, dps_index: List[D
 
 **Budget Breakdown Tip:** Funders want to see exactly how you'll spend their money. Break it down: 60% staff, 25% programs, 10% equipment, 5% evaluation.
 """,
-        
         "timing_guidance": f"""
 ## Best Times to Apply
 
@@ -495,7 +524,6 @@ def _generate_municipal_section(title: str, section_type: str, dps_index: List[D
 
 **Your Action:** Start working on grants for next year THIS month. The best funding goes to those who plan ahead.
 """,
-        
         "project_requirements": f"""
 ## What Funders Want to See
 
@@ -526,7 +554,6 @@ def _generate_municipal_section(title: str, section_type: str, dps_index: List[D
 • Unrealistic timelines
 • Budgets that don't add up
 """,
-        
         "geographic_opportunities": f"""
 ## Your Geographic Advantages
 
@@ -552,7 +579,6 @@ def _generate_municipal_section(title: str, section_type: str, dps_index: List[D
 
 **Partnership Power:** Team up with organizations in other cities for regional grants that require multiple locations.
 """,
-        
         "project_positioning": f"""
 ## Positioning Your Project
 
@@ -586,7 +612,6 @@ def _generate_municipal_section(title: str, section_type: str, dps_index: List[D
 
 **Elevator Pitch Formula:** "We help [specific group] achieve [specific outcome] by [specific method], which will result in [measurable benefit] for our community."
 """,
-        
         "action_plan": f"""
 ## Your 90-Day Action Plan
 
@@ -620,20 +645,21 @@ def _generate_municipal_section(title: str, section_type: str, dps_index: List[D
 • **Build relationships** - Successful grant writers know their funders personally
 
 **Success Metrics:** By day 90, you should have submitted 2-3 applications and have 5+ funders who know your organization.
-"""
+""",
     }
-    
-    content = content_templates.get(section_type, 
-        f"## {title}\n\nThis section provides guidance on {section_type.replace('_', ' ')}. {data_context}we recommend focusing on practical steps that will help your municipal organization secure funding.\n\n**Key Points:**\n• Research thoroughly before applying\n• Build relationships with funders\n• Focus on measurable community impact\n• Plan your applications well in advance\n\n**Next Steps:** Review the data provided and identify 2-3 specific actions you can take this month to move your funding goals forward.")
-    
-    return {
-        "title": title,
-        "markdown_body": content
-    }
+
+    content = content_templates.get(
+        section_type,
+        f"## {title}\n\nThis section provides guidance on {section_type.replace('_', ' ')}. {data_context}we recommend focusing on practical steps that will help your municipal organization secure funding.\n\n**Key Points:**\n• Research thoroughly before applying\n• Build relationships with funders\n• Focus on measurable community impact\n• Plan your applications well in advance\n\n**Next Steps:** Review the data provided and identify 2-3 specific actions you can take this month to move your funding goals forward.",
+    )
+
+    return {"title": title, "markdown_body": content}
 
 
 @st.cache_data(show_spinner=True)
-def _interpret_chart_cached(key: str, summary: Dict[str, Any], interview_dict: Dict[str, Any]) -> str:
+def _interpret_chart_cached(
+    key: str, summary: Dict[str, Any], interview_dict: Dict[str, Any]
+) -> str:
     """Return a short interpretation for a chart, grounded in the provided summary and interview."""
     try:
         user_msg = chart_interpretation_user(summary, interview_dict)
@@ -659,7 +685,9 @@ def _interpret_chart_cached(key: str, summary: Dict[str, Any], interview_dict: D
 
 
 @st.cache_data(show_spinner=True)
-def _stage5_recommend_cached(key: str, needs_dict: Dict[str, Any], dps_index: List[Dict[str, Any]]) -> Dict[str, Any]:
+def _stage5_recommend_cached(
+    key: str, needs_dict: Dict[str, Any], dps_index: List[Dict[str, Any]]
+) -> Dict[str, Any]:
     try:
         obj = _chat_completion_json(stage5_recommend_user(needs_dict, dps_index))
         if isinstance(obj, dict):

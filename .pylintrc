@@ -1,0 +1,124 @@
+[MASTER]
+# Python code to execute, usually for sys.path manipulation such as
+# pygtk.require().
+init-hook=import sys; sys.path.append('.')
+
+# Add files or directories to the blacklist
+ignore=.history,.venv,.ruru,build,dist,.git
+
+# Use multiple processes to speed up Pylint.
+jobs=1
+
+# Allow loading of arbitrary C extensions.
+unsafe-load-any-extension=no
+
+# A comma-separated list of package or module names
+extension-pkg-allow-list=
+
+[MESSAGES CONTROL]
+# Only show warnings with the listed confidence levels
+confidence=
+
+# Disable the message(s) with the given id(s). Being very permissive to avoid false positives:
+# C0111: missing-docstring
+# C0103: invalid-name 
+# R0903: too-few-public-methods
+# R0913: too-many-arguments
+# W0613: unused-argument
+# W0622: redefined-builtin
+# C0415: import-outside-toplevel (for dynamic imports)
+# W0212: protected-access (for _private attributes)
+# R0801: duplicate-code
+# W0718: broad-exception-caught
+# W1203: logging-fstring-interpolation
+# E1101: no-member (often false positive with dynamic attributes)
+# R0902: too-many-instance-attributes
+# R0914: too-many-locals
+# W0102: dangerous-default-value
+# E0401: import-error (for imports that exist but pylint can't find)
+# E1120: no-value-for-parameter
+# E1121: too-many-function-args
+# W0611: unused-import
+# W0404: reimported
+# W0621: redefined-outer-name
+# R0912: too-many-branches
+# R0915: too-many-statements
+# W0703: broad-except
+# W0511: fixme (TODO, FIXME comments)
+# C0301: line-too-long
+# R0911: too-many-return-statements
+# R0916: too-many-boolean-expressions
+disable=C0111,C0103,R0903,R0913,W0613,W0622,C0415,W0212,R0801,W0718,W1203,E1101,R0902,R0914,W0102,E0401,E1120,E1121,W0611,W0404,W0621,R0912,R0915,W0703,W0511,C0301,R0911,R0916,W0105,C0413,E0611,W0127,C0412,R1702,R1705
+
+[REPORTS]
+# Set the output format
+output-format=text
+
+# Don't display the full reports
+reports=no
+
+[FORMAT]
+# Maximum number of characters on a single line
+max-line-length=100
+
+# Expected format of line ending
+expected-line-ending-format=
+
+[VARIABLES]
+# Tells whether we should check for unused import in __init__ files
+init-import=no
+
+# A regular expression matching the name of dummy variables
+dummy-variables-rgx=_+$|(_[a-zA-Z0-9_]*[a-zA-Z0-9]+?$)|dummy|^ignored_|^unused_
+
+[BASIC]
+# Good variable names which should always be accepted
+good-names=i,j,k,ex,Run,_,id,df,ax,fig,st,os
+
+[DESIGN]
+# Maximum number of arguments for function / method
+max-args=10
+
+# Maximum number of locals for function / method body
+max-locals=20
+
+# Maximum number of return / yield for function / method body
+max-returns=10
+
+# Maximum number of branch for function / method body
+max-branches=15
+
+# Maximum number of statements in function / method body
+max-statements=60
+
+# Maximum number of parents for a class
+max-parents=10
+
+# Maximum number of attributes for a class
+max-attributes=15
+
+# Minimum number of public methods for a class
+min-public-methods=0
+
+# Maximum number of public methods for a class
+max-public-methods=25
+
+[IMPORTS]
+# Create a graph of every (i.e. internal and external) dependencies in the given file
+import-graph=
+
+# Create a graph of external dependencies in the given file
+ext-import-graph=
+
+# Create a graph of internal dependencies in the given file
+int-import-graph=
+
+# Force import order to recognize a module as part of the standard compatibility libraries
+known-standard-library=
+
+# Force import order to recognize a module as part of a third party library
+known-third-party=streamlit,pandas,numpy,plotly,matplotlib,wordcloud,xlsxwriter,llama_index,openai,duckdb,requests,tqdm,sklearn,pydantic
+
+[EXCEPTIONS]
+# Exceptions that will emit a warning when being caught
+overgeneral-exceptions=builtins.BaseException,builtins.Exception

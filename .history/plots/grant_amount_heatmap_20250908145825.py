@@ -19,7 +19,8 @@ def grant_amount_heatmap(df, grouped_df, selected_chart, selected_role, ai_enabl
 
     audience = "pro" if selected_role == "Grant Analyst/Writer" else "new"
     if is_enabled("GS_ENABLE_PLAIN_HELPERS") and audience == "new":
-        st.info("""
+        st.info(
+            """
         What this chart shows:
         - Where two dimensions overlap (like Subject × Population)
 
@@ -29,7 +30,8 @@ def grant_amount_heatmap(df, grouped_df, selected_chart, selected_role, ai_enabl
         What to do next:
         - Try different pairs of dimensions
         - Note the strongest combinations that match your work
-        """)
+        """
+        )
 
     st.write(
         """
@@ -54,14 +56,21 @@ def grant_amount_heatmap(df, grouped_df, selected_chart, selected_role, ai_enabl
     # MAIN CONTENT (center column)
     with col_main:
         # Validate required structure
-        req_cols = {"amount_usd", "grant_subject_tran", "grant_population_tran", "grant_strategy_tran"}
+        req_cols = {
+            "amount_usd",
+            "grant_subject_tran",
+            "grant_population_tran",
+            "grant_strategy_tran",
+        }
         if missing := sorted(req_cols - set(grouped_df.columns)):
             st.error(f"Missing required columns: {', '.join(missing)}")
             return
 
         # Work on copies and ensure types
         grouped_df = grouped_df.copy()
-        grouped_df["amount_usd"] = pd.to_numeric(grouped_df["amount_usd"], errors="coerce").fillna(0)
+        grouped_df["amount_usd"] = pd.to_numeric(grouped_df["amount_usd"], errors="coerce").fillna(
+            0
+        )
         for c in ["grant_subject_tran", "grant_population_tran", "grant_strategy_tran"]:
             grouped_df[c] = grouped_df[c].fillna("").astype(str)
 
@@ -71,11 +80,15 @@ def grant_amount_heatmap(df, grouped_df, selected_chart, selected_role, ai_enabl
         col1, col2 = st.columns(2)
         with col1:
             dimension1 = st.selectbox(
-                "Select Dimension 1", options=dimension_options, index=dimension_options.index(default_dim1)
+                "Select Dimension 1",
+                options=dimension_options,
+                index=dimension_options.index(default_dim1),
             )
         with col2:
             dimension2 = st.selectbox(
-                "Select Dimension 2", options=[d for d in dimension_options if d != dimension1], index=0
+                "Select Dimension 2",
+                options=[d for d in dimension_options if d != dimension1],
+                index=0,
             )
 
         with st.expander("Heatmap Settings", expanded=False):
@@ -87,7 +100,9 @@ def grant_amount_heatmap(df, grouped_df, selected_chart, selected_role, ai_enabl
                     index=0,
                 )
             with colB:
-                normalize = st.toggle("Normalize by row", value=False, help="Show each row as proportion of its total")
+                normalize = st.toggle(
+                    "Normalize by row", value=False, help="Show each row as proportion of its total"
+                )
         # Value labels are shown on hover; keeping UI minimal for now.
 
         st.caption("Select individual values for each dimension to filter the heatmap.")
@@ -120,7 +135,8 @@ def grant_amount_heatmap(df, grouped_df, selected_chart, selected_role, ai_enabl
             pass
 
         filtered_df = grouped_df[
-            grouped_df[dimension1].isin(selected_values1) & grouped_df[dimension2].isin(selected_values2)
+            grouped_df[dimension1].isin(selected_values1)
+            & grouped_df[dimension2].isin(selected_values2)
         ]
 
         @st.cache_data(show_spinner=False)
@@ -132,7 +148,9 @@ def grant_amount_heatmap(df, grouped_df, selected_chart, selected_role, ai_enabl
         normalized_tbl = (pivot_table.T / row_sums).T.fillna(0)
         # Branchless selection to avoid linter's swap-if-else suggestion
         selected_vals = np.where(bool(normalize), normalized_tbl.values, pivot_table.values)
-        pivot_table = pd.DataFrame(selected_vals, index=pivot_table.index, columns=pivot_table.columns)
+        pivot_table = pd.DataFrame(
+            selected_vals, index=pivot_table.index, columns=pivot_table.columns
+        )
 
         value_label = "Proportion" if normalize else "Value"
         hover_value_fmt = "%{z:.2f}" if normalize else "%{z:,.0f}"
@@ -172,8 +190,12 @@ def grant_amount_heatmap(df, grouped_df, selected_chart, selected_role, ai_enabl
                 f"the intersection of {dimension1.split('_')[1]} and {dimension2.split('_')[1]} dimensions, "
                 f"filtered by selections on each axis"
             )
-            pre_prompt = generate_page_prompt(df, grouped_df, selected_chart, selected_role, additional_context)
-            render_ai_explainer(filtered_df, pre_prompt, chart_id="heatmap.main", sample_df=filtered_df)
+            pre_prompt = generate_page_prompt(
+                df, grouped_df, selected_chart, selected_role, additional_context
+            )
+            render_ai_explainer(
+                filtered_df, pre_prompt, chart_id="heatmap.main", sample_df=filtered_df
+            )
         except Exception:
             pass
 
@@ -203,7 +225,8 @@ def grant_amount_heatmap(df, grouped_df, selected_chart, selected_role, ai_enabl
             )
 
             cell_grants = grouped_df[
-                (grouped_df[dimension1] == selected_value1) & (grouped_df[dimension2] == selected_value2)
+                (grouped_df[dimension1] == selected_value1)
+                & (grouped_df[dimension2] == selected_value2)
             ]
 
             if cell_grants.empty:
@@ -257,7 +280,9 @@ def grant_amount_heatmap(df, grouped_df, selected_chart, selected_role, ai_enabl
         )
         # Single selector per page: set chart id for downstream chat context
         set_selected_chart("heatmap.main")
-        pre_prompt = generate_page_prompt(df, grouped_df, selected_chart, selected_role, additional_context)
+        pre_prompt = generate_page_prompt(
+            df, grouped_df, selected_chart, selected_role, additional_context
+        )
         with col_chat:
             chat_panel(
                 filtered_df,  # type: ignore[name-defined]
@@ -266,4 +291,6 @@ def grant_amount_heatmap(df, grouped_df, selected_chart, selected_role, ai_enabl
                 title="Heatmap — AI Assistant",
             )
     else:
-        st.info("AI-assisted analysis is disabled. Please provide an API key to enable this feature.")
+        st.info(
+            "AI-assisted analysis is disabled. Please provide an API key to enable this feature."
+        )

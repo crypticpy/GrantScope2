@@ -1,8 +1,10 @@
-import streamlit as st
 import os
-from loaders.llama_index_setup import tool_query, stream_query, resolve_chart_context
-from utils.utils import is_feature_enabled
+
+import streamlit as st
+
+from loaders.llama_index_setup import resolve_chart_context, stream_query, tool_query
 from utils.app_state import get_selected_chart
+from utils.utils import is_feature_enabled
 
 # Expose a module-level alias for tests to patch: utils.chat_panel.get_session_profile
 # The actual retrieval remains deferred inside functions for runtime safety.
@@ -11,6 +13,7 @@ try:
 except Exception:
     _get_session_profile_alias = None  # type: ignore
 get_session_profile = _get_session_profile_alias  # type: ignore
+
 
 def _inject_right_sidebar_css_once(width_px: int = 420) -> None:
     """Inject CSS to create a fixed right-side chat area and reserve space in the main content."""
@@ -22,15 +25,15 @@ def _inject_right_sidebar_css_once(width_px: int = 420) -> None:
         # session_state might be unavailable in some contexts; continue with injection
         pass
 
-    css = f"""
+    css = """
     <style>
-    :root {{
+    :root {
       --chat-panel-top: 4rem;
-    }}
+    }
 
     /* Make the chat container (column that includes our anchor) sticky with its own scroll,
        without modifying the main content width or margins. */
-    div[data-testid="stVerticalBlock"]:has(.chat-right-anchor) {{
+    div[data-testid="stVerticalBlock"]:has(.chat-right-anchor) {
       position: sticky;
       top: var(--chat-panel-top);
       align-self: flex-start;
@@ -38,12 +41,12 @@ def _inject_right_sidebar_css_once(width_px: int = 420) -> None:
       overflow-y: auto;
       padding-bottom: 0.75rem;
       box-sizing: border-box;
-    }}
+    }
 
     /* Allow chat messages to use full width of the chat column */
-    div[data-testid="stVerticalBlock"]:has(.chat-right-anchor) div[data-testid="stChatMessage"] {{
+    div[data-testid="stVerticalBlock"]:has(.chat-right-anchor) div[data-testid="stChatMessage"] {
       max-width: none;
-    }}
+    }
     </style>
     """
     st.markdown(css, unsafe_allow_html=True)
@@ -55,7 +58,9 @@ def _inject_right_sidebar_css_once(width_px: int = 420) -> None:
 
 def _chat_right_anchor(state_key: str) -> None:
     """Emit a marker so CSS can target the enclosing container as the right chat panel."""
-    st.markdown(f'<div class="chat-right-anchor" id="chat-right-{state_key}"></div>', unsafe_allow_html=True)
+    st.markdown(
+        f'<div class="chat-right-anchor" id="chat-right-{state_key}"></div>', unsafe_allow_html=True
+    )
 
 
 def _inject_sidebar_chat_css_once() -> None:
@@ -116,6 +121,7 @@ def _inject_sidebar_chat_css_once() -> None:
     except Exception:
         pass
 
+
 def _inject_sidebar_layout_css_once() -> None:
     """Inject CSS to make the sidebar a flex column and anchor the chat block to the viewport bottom (no spacer required)."""
     key = "_chat_sidebar_layout_css"
@@ -158,20 +164,25 @@ def _inject_sidebar_layout_css_once() -> None:
     except Exception:
         pass
 
+
 def _chat_sidebar_anchor(state_key: str) -> None:
     """Emit a marker so CSS can target the enclosing sidebar container for chat layout."""
-    st.markdown(f'<div class="chat-sidebar-anchor" id="chat-sidebar-{state_key}"></div>', unsafe_allow_html=True)
+    st.markdown(
+        f'<div class="chat-sidebar-anchor" id="chat-sidebar-{state_key}"></div>',
+        unsafe_allow_html=True,
+    )
 
 
 def _audience_preface() -> str:
     """Return a preface to guide the assistant tone based on user experience level.
-    
+
     When the user is a beginner, append a compact seasoning derived from their profile
     (org_type, region, goal) if available. This keeps tone beginner-friendly while
     adding lightweight context without exposing PII beyond these fields.
     """
     try:
         from utils.app_state import get_session_profile  # deferred import
+
         prof = get_session_profile()
         if prof and getattr(prof, "experience_level", "new") == "new":
             preface = (
@@ -195,14 +206,17 @@ def _audience_preface() -> str:
                     if goal_short:
                         bits.append(f"goal={goal_short}")
                 if bits:
-                    preface = f"{preface} Also consider the user's context: " + ", ".join(bits) + "."
+                    preface = (
+                        f"{preface} Also consider the user's context: " + ", ".join(bits) + "."
+                    )
             except Exception:
                 # Seasoning is optional; ignore failures
                 pass
 
             # Add very concise planner/budget seasoning when available
             try:
-                from utils.app_state import get_planner_summary, get_budget_summary  # type: ignore
+                from utils.app_state import get_budget_summary, get_planner_summary  # type: ignore
+
                 pb_bits: list[str] = []
                 try:
                     ps = get_planner_summary()  # type: ignore[call-arg]
@@ -240,6 +254,7 @@ def _get_starter_prompts(chart_id: str | None = None) -> list[str]:
     """
     try:
         from utils.app_state import get_session_profile  # deferred import
+
         prof = get_session_profile()
         if prof and getattr(prof, "experience_level", "new") == "new":
             # Chart-specific starters for chart pages only
@@ -350,18 +365,25 @@ def chat_panel(df, pre_prompt: str, state_key: str, title: str = "AI Assistant")
 
         # Chat root with internal scroll area (history) and fixed bottom input
         with st.container():
-            st.markdown(f'<div class="gs-chat-root" id="gs-chat-root-{state_key}">', unsafe_allow_html=True)
+            st.markdown(
+                f'<div class="gs-chat-root" id="gs-chat-root-{state_key}">', unsafe_allow_html=True
+            )
 
             st.subheader(title)
 
             # History (scrolling) region
             with st.container():
-                st.markdown(f'<div class="gs-chat-history" id="gs-chat-history-{state_key}">', unsafe_allow_html=True)
+                st.markdown(
+                    f'<div class="gs-chat-history" id="gs-chat-history-{state_key}">',
+                    unsafe_allow_html=True,
+                )
 
                 if chart_id and extra_ctx:
                     st.caption(f"Using chart context: {chart_id}")
                 elif chart_id and not extra_ctx:
-                    st.info("Selected chart has no specific context mapping yet; using page-level context.")
+                    st.info(
+                        "Selected chart has no specific context mapping yet; using page-level context."
+                    )
                 else:
                     st.info("No chart selected; using page-level context.")
 
@@ -370,12 +392,14 @@ def chat_panel(df, pre_prompt: str, state_key: str, title: str = "AI Assistant")
                     with st.chat_message(role):
                         st.markdown(content)
 
-                st.markdown('</div>', unsafe_allow_html=True)
-
+                st.markdown("</div>", unsafe_allow_html=True)
 
             # Bottom-anchored input region
             with st.container():
-                st.markdown(f'<div class="gs-chat-input" id="gs-chat-input-{state_key}">', unsafe_allow_html=True)
+                st.markdown(
+                    f'<div class="gs-chat-input" id="gs-chat-input-{state_key}">',
+                    unsafe_allow_html=True,
+                )
 
                 # Starter prompts for newcomers — presented as a dropdown
                 try:
@@ -415,10 +439,12 @@ def chat_panel(df, pre_prompt: str, state_key: str, title: str = "AI Assistant")
                     pass
 
                 with st.form(key=f"chat_form_{state_key}", clear_on_submit=True):
-                    user_input = st.text_input("Ask a question about this view…", key=f"chat_input_{state_key}")
+                    user_input = st.text_input(
+                        "Ask a question about this view…", key=f"chat_input_{state_key}"
+                    )
                     submitted = st.form_submit_button("Send")
-                st.markdown('</div>', unsafe_allow_html=True)  # close gs-chat-input
-                st.markdown('</div>', unsafe_allow_html=True)  # close gs-chat-root
+                st.markdown("</div>", unsafe_allow_html=True)  # close gs-chat-input
+                st.markdown("</div>", unsafe_allow_html=True)  # close gs-chat-root
 
         # Auto-send when a starter was clicked
         autosend_key = f"chat_autosend_{state_key}"
@@ -442,7 +468,11 @@ def chat_panel(df, pre_prompt: str, state_key: str, title: str = "AI Assistant")
                 try:
                     preface = _audience_preface()
                     pre_prompt_user = f"{preface}\n\n{pre_prompt}".strip()
-                    pre_prompt_eff = f"{pre_prompt_user} Additional Chart Context: {extra_ctx}" if extra_ctx else pre_prompt_user
+                    pre_prompt_eff = (
+                        f"{pre_prompt_user} Additional Chart Context: {extra_ctx}"
+                        if extra_ctx
+                        else pre_prompt_user
+                    )
                     for delta in stream_query(df, user_input, pre_prompt_eff):
                         if st.session_state.get(cancel_key):
                             parts.append("\n\n[Cancelled by user]")
@@ -462,7 +492,9 @@ def chat_panel(df, pre_prompt: str, state_key: str, title: str = "AI Assistant")
                             preface = _audience_preface()
                             pre_prompt_eff = f"{preface}\n\n{pre_prompt}".strip()
                             fallback = tool_query(df, user_input, pre_prompt_eff, extra_ctx)
-                            final_answer = fallback if str(fallback).strip() else "_No content produced._"
+                            final_answer = (
+                                fallback if str(fallback).strip() else "_No content produced._"
+                            )
                         except Exception as e:
                             final_answer = f"Streaming yielded no content and fallback failed: {e}"
 

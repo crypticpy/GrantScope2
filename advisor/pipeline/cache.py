@@ -1,9 +1,12 @@
 from __future__ import annotations
+
 from typing import Any
+
 import pandas as pd
 
-from .imports import stable_hash_for_obj
 from .convert import _safe_to_dict
+from .imports import stable_hash_for_obj
+
 
 def compute_data_signature(df: pd.DataFrame) -> str:
     """Return a simple signature for caching: rows + sum(amount_usd)."""
@@ -20,6 +23,7 @@ def compute_data_signature(df: pd.DataFrame) -> str:
     except Exception:
         total = 0.0
     return f"{rows}:{total:.2f}"
+
 
 def cache_key_for(interview: Any, df: pd.DataFrame) -> str:
     try:

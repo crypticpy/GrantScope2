@@ -12,10 +12,8 @@ system/user messages for each stage of the pipeline. Stages are:
 
 from __future__ import annotations
 
-from typing import Any, Iterable, Optional
-
 from textwrap import dedent
-
+from typing import Any
 
 WHITELISTED_TOOLS: tuple[str, ...] = (
     "df_describe",

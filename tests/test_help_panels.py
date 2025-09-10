@@ -1,6 +1,5 @@
 import sys
 from types import ModuleType
-import pytest
 
 
 def _install_fake_streamlit(monkeypatch):
@@ -10,10 +9,10 @@ def _install_fake_streamlit(monkeypatch):
     st_mod = ModuleType("streamlit")
 
     # Storage for assertions
-    setattr(st_mod, "_md_calls", [])
+    st_mod._md_calls = []
 
     # Minimal session_state
-    setattr(st_mod, "session_state", {})
+    st_mod.session_state = {}
 
     # expander context manager
     class _Expander:
@@ -37,9 +36,9 @@ def _install_fake_streamlit(monkeypatch):
     # Sidebar placeholder (not used but present for parity)
     sidebar = ModuleType("streamlit.sidebar")
 
-    setattr(st_mod, "expander", _expander)
-    setattr(st_mod, "markdown", _markdown)
-    setattr(st_mod, "sidebar", sidebar)
+    st_mod.expander = _expander
+    st_mod.markdown = _markdown
+    st_mod.sidebar = sidebar
 
     monkeypatch.setitem(sys.modules, "streamlit", st_mod)
     return st_mod
@@ -54,7 +53,7 @@ def _install_fake_config(monkeypatch, enabled: bool):
     def is_enabled(_flag: str) -> bool:
         return bool(enabled)
 
-    setattr(cfg, "is_enabled", is_enabled)
+    cfg.is_enabled = is_enabled
     monkeypatch.setitem(sys.modules, "config", cfg)
     return cfg
 
@@ -85,6 +84,7 @@ class TestHelpPanels:
 
         # Import and override (safety if help was previously imported)
         import importlib
+
         help_mod = importlib.import_module("utils.help")  # type: ignore
         # Force is_enabled to return False regardless of config module cache
         monkeypatch.setattr(help_mod, "is_enabled", lambda _flag: False, raising=False)

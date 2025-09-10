@@ -1,6 +1,7 @@
 """
 Recommendations engine: data-first with optional AI augmentation.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -47,7 +48,10 @@ class GrantRecommender:
             if "funder_name" not in df.columns or "amount_usd" not in df.columns:
                 return []
             s = (
-                df.groupby("funder_name")["amount_usd"].sum().sort_values(ascending=False).head(int(n))
+                df.groupby("funder_name")["amount_usd"]
+                .sum()
+                .sort_values(ascending=False)
+                .head(int(n))
             )
             return list(s.index.astype(str))
         except Exception:
@@ -94,9 +98,7 @@ class GrantRecommender:
         if stats:
             mid = stats.get("median", 0.0)
             p25, p75 = stats.get("p25", 0.0), stats.get("p75", 0.0)
-            budget_note = (
-                f"Typical grants in this dataset range around ${p25:,.0f}–${p75:,.0f} (median ${mid:,.0f})."
-            )
+            budget_note = f"Typical grants in this dataset range around ${p25:,.0f}–${p75:,.0f} (median ${mid:,.0f})."
             recs.append(
                 Recommendation(
                     id="budget_range",
@@ -115,8 +117,9 @@ class GrantRecommender:
                     id="top_funders",
                     title="Research active funders",
                     reason=(
-                        "These funders give the most in your data: " + ", ".join(funders) + 
-                        ". Check their focus areas and recent awards."
+                        "These funders give the most in your data: "
+                        + ", ".join(funders)
+                        + ". Check their focus areas and recent awards."
                     ),
                     score=0.85,
                     source="data",
@@ -159,7 +162,9 @@ class GrantRecommender:
         recs.sort(key=lambda r: r.score, reverse=True)
         return recs[:6]
 
-    def augment_with_ai(self, base: List[Recommendation], profile: Optional[Dict[str, Any]] = None) -> List[Recommendation]:
+    def augment_with_ai(
+        self, base: List[Recommendation], profile: Optional[Dict[str, Any]] = None
+    ) -> List[Recommendation]:
         # Respect feature flag and key
         if not config.is_enabled("GS_ENABLE_AI_AUGMENTATION"):
             return base
@@ -185,7 +190,10 @@ class GrantRecommender:
             resp = client.chat.completions.create(
                 model=config.get_model_name("gpt-5-mini"),
                 messages=[
-                    {"role": "system", "content": "Return clear, safe, realistic suggestions only."},
+                    {
+                        "role": "system",
+                        "content": "Return clear, safe, realistic suggestions only.",
+                    },
                     {"role": "user", "content": user_prompt},
                 ],
                 temperature=0.2,
@@ -217,6 +225,7 @@ class GrantRecommender:
         profile = None
         try:
             from utils.app_state import get_session_profile  # deferred import
+
             prof = get_session_profile()
             profile = prof.to_dict() if hasattr(prof, "to_dict") else None
         except Exception:
@@ -234,4 +243,3 @@ class GrantRecommender:
                     st.markdown(r.reason)
                 else:
                     st.success(f"**{r.title}** — {r.reason}")
-

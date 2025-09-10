@@ -1,5 +1,6 @@
 import sys
 from types import ModuleType
+
 import pytest
 
 
@@ -10,7 +11,7 @@ def _install_fake_streamlit(monkeypatch):
     """
     st_mod = ModuleType("streamlit")
     # Simple dict-like session_state
-    setattr(st_mod, "session_state", {})
+    st_mod.session_state = {}
 
     # Optional APIs referenced in utils/navigation (no-ops for tests)
     def _page_link(*_args, **_kwargs):
@@ -19,13 +20,13 @@ def _install_fake_streamlit(monkeypatch):
     def _info(*_args, **_kwargs):
         return None
 
-    setattr(st_mod, "page_link", _page_link)
-    setattr(st_mod, "info", _info)
+    st_mod.page_link = _page_link
+    st_mod.info = _info
 
     # Provide a stub 'sidebar' with a page_link attribute to satisfy fallbacks
     sidebar_mod = ModuleType("streamlit.sidebar")
-    setattr(sidebar_mod, "page_link", _page_link)
-    setattr(st_mod, "sidebar", sidebar_mod)
+    sidebar_mod.page_link = _page_link
+    st_mod.sidebar = sidebar_mod
 
     monkeypatch.setitem(sys.modules, "streamlit", st_mod)
     return st_mod
@@ -57,14 +58,23 @@ class TestNavigationFlow:
         assert nxt.endswith("pages/3_Grant_Amount_Heatmap.py")
 
     def test_breadcrumb_order_across_three_pages(self):
-        from utils.navigation import clear_breadcrumbs, push_breadcrumb, get_breadcrumbs, get_page_label
+        from utils.navigation import (
+            clear_breadcrumbs,
+            get_breadcrumbs,
+            get_page_label,
+            push_breadcrumb,
+        )
 
         clear_breadcrumbs()
 
         # Simulate visiting three pages in order
         push_breadcrumb(get_page_label("data_summary"), "pages/1_Data_Summary.py")
-        push_breadcrumb(get_page_label("grant_amount_distribution"), "pages/2_Grant_Amount_Distribution.py")
-        push_breadcrumb(get_page_label("grant_amount_scatter"), "pages/4_Grant_Amount_Scatter_Plot.py")
+        push_breadcrumb(
+            get_page_label("grant_amount_distribution"), "pages/2_Grant_Amount_Distribution.py"
+        )
+        push_breadcrumb(
+            get_page_label("grant_amount_scatter"), "pages/4_Grant_Amount_Scatter_Plot.py"
+        )
 
         bc = get_breadcrumbs()
         assert isinstance(bc, list)
@@ -80,11 +90,15 @@ class TestNavigationFlow:
     def test_continue_state_tooltips_and_enablement(self):
         from utils.navigation import compute_continue_state
 
-        enabled, tip = compute_continue_state(data_loaded=True, next_label="Grant Amount Distribution")
+        enabled, tip = compute_continue_state(
+            data_loaded=True, next_label="Grant Amount Distribution"
+        )
         assert enabled is True
         assert tip == "Next: Grant Amount Distribution"
 
-        enabled, tip = compute_continue_state(data_loaded=False, next_label="Grant Amount Distribution")
+        enabled, tip = compute_continue_state(
+            data_loaded=False, next_label="Grant Amount Distribution"
+        )
         assert enabled is False
         assert tip == "Load your data to continue."
 

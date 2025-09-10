@@ -2,11 +2,11 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-from utils.chat_panel import chat_panel
-from utils.utils import download_csv, generate_page_prompt
-from utils.app_state import set_selected_chart
 from config import is_enabled
 from utils.ai_explainer import render_ai_explainer
+from utils.app_state import set_selected_chart
+from utils.chat_panel import chat_panel
+from utils.utils import download_csv, generate_page_prompt
 
 
 def grant_amount_scatter_plot(df, grouped_df, selected_chart, selected_role, ai_enabled):
@@ -17,7 +17,8 @@ def grant_amount_scatter_plot(df, grouped_df, selected_chart, selected_role, ai_
 
     audience = "pro" if selected_role == "Grant Analyst/Writer" else "new"
     if is_enabled("GS_ENABLE_PLAIN_HELPERS") and audience == "new":
-        st.info("""
+        st.info(
+            """
         What this chart shows:
         - How grant amounts change over the years
 
@@ -27,7 +28,8 @@ def grant_amount_scatter_plot(df, grouped_df, selected_chart, selected_role, ai_
         What to do next:
         - Pick a year range and clusters that match your project
         - Look for years with more activity in your cluster
-        """)
+        """
+        )
 
     st.write(
         """
@@ -57,10 +59,12 @@ def grant_amount_scatter_plot(df, grouped_df, selected_chart, selected_role, ai_
     df = df.copy()
     grouped_df = grouped_df.copy()
     grouped_df["amount_usd"] = pd.to_numeric(grouped_df["amount_usd"], errors="coerce").fillna(0)
-    grouped_df["year_issued"] = pd.to_numeric(grouped_df["year_issued"], errors="coerce").fillna(0).astype(int)
+    grouped_df["year_issued"] = (
+        pd.to_numeric(grouped_df["year_issued"], errors="coerce").fillna(0).astype(int)
+    )
     grouped_df["amount_usd_cluster"] = grouped_df["amount_usd_cluster"].astype("string").fillna("")
 
-    unique_years = sorted(grouped_df['year_issued'].unique())
+    unique_years = sorted(grouped_df["year_issued"].unique())
     if len(unique_years) == 1:
         unique_year = int(unique_years[0])
         st.write(f"Data available for year: {unique_year}")
@@ -80,20 +84,24 @@ def grant_amount_scatter_plot(df, grouped_df, selected_chart, selected_role, ai_
         )
 
     @st.cache_data(show_spinner=False)
-    def _filter_scatter(gdf: pd.DataFrame, s: int, e: int, clusters: tuple[str, ...]) -> pd.DataFrame:
-        f = gdf[(gdf['year_issued'] >= s) & (gdf['year_issued'] <= e)]
+    def _filter_scatter(
+        gdf: pd.DataFrame, s: int, e: int, clusters: tuple[str, ...]
+    ) -> pd.DataFrame:
+        f = gdf[(gdf["year_issued"] >= s) & (gdf["year_issued"] <= e)]
         if clusters:
-            f = f[f['amount_usd_cluster'].astype(str).isin(clusters)]
-        return f[f['amount_usd'] > 0]
+            f = f[f["amount_usd_cluster"].astype(str).isin(clusters)]
+        return f[f["amount_usd"] > 0]
 
-    cluster_options = grouped_df['amount_usd_cluster'].dropna().astype(str).unique().tolist()
+    cluster_options = grouped_df["amount_usd_cluster"].dropna().astype(str).unique().tolist()
     selected_clusters = st.multiselect(
         "Select USD Clusters",
         options=cluster_options,
         default=cluster_options,
-        key='scatter_clusters',
+        key="scatter_clusters",
     )
-    filtered_df = _filter_scatter(grouped_df, int(start_year), int(end_year), tuple(map(str, selected_clusters)))
+    filtered_df = _filter_scatter(
+        grouped_df, int(start_year), int(end_year), tuple(map(str, selected_clusters))
+    )
 
     if filtered_df.empty:
         st.warning("No data for the selected filters. Try expanding the year range or clusters.")
@@ -108,34 +116,34 @@ def grant_amount_scatter_plot(df, grouped_df, selected_chart, selected_role, ai_
         with colC:
             log_y = st.toggle("Log scale (Y)", value=False)
 
-    filtered_df['year_issued'] = pd.to_datetime(filtered_df['year_issued'], format='%Y')
-    years_for_ticks = sorted(filtered_df['year_issued'].dt.year.unique())
+    filtered_df["year_issued"] = pd.to_datetime(filtered_df["year_issued"], format="%Y")
+    years_for_ticks = sorted(filtered_df["year_issued"].dt.year.unique())
 
     fig = px.scatter(
         filtered_df,
-        x='year_issued',
-        y='amount_usd',
-        color='amount_usd_cluster',
-        hover_data=['grant_key', 'grant_description', 'amount_usd'],
+        x="year_issued",
+        y="amount_usd",
+        color="amount_usd_cluster",
+        hover_data=["grant_key", "grant_description", "amount_usd"],
         opacity=opacity,
     )
     fig.update_traces(marker=dict(size=marker_size))
     fig.update_layout(
-        title='Grant Amount by Year',
-        xaxis_title='Year Issued',
-        yaxis_title='Amount (USD)',
-        legend_title_text='USD Cluster',
+        title="Grant Amount by Year",
+        xaxis_title="Year Issued",
+        yaxis_title="Amount (USD)",
+        legend_title_text="USD Cluster",
         legend=dict(itemclick="toggleothers", itemdoubleclick="toggle"),
-        clickmode='event+select',
+        clickmode="event+select",
     )
     if years_for_ticks:
         fig.update_xaxes(
-            tickvals=pd.to_datetime(years_for_ticks, format='%Y'),
+            tickvals=pd.to_datetime(years_for_ticks, format="%Y"),
             ticktext=years_for_ticks,
         )
 
     if log_y:
-        fig.update_yaxes(type='log')
+        fig.update_yaxes(type="log")
     st.plotly_chart(fig, use_container_width=True)
 
     # AI Explainer for scatter chart
@@ -144,7 +152,9 @@ def grant_amount_scatter_plot(df, grouped_df, selected_chart, selected_role, ai_
             f"the distribution of grant amounts over time, filtered by USD clusters ({', '.join(map(str, selected_clusters))}) "
             f"and year range ({start_year} to {end_year})"
         )
-        pre_prompt = generate_page_prompt(df, grouped_df, selected_chart, selected_role, additional_context)
+        pre_prompt = generate_page_prompt(
+            df, grouped_df, selected_chart, selected_role, additional_context
+        )
         render_ai_explainer(filtered_df, pre_prompt, chart_id="scatter.main", sample_df=filtered_df)
     except Exception:
         pass
@@ -174,15 +184,21 @@ def grant_amount_scatter_plot(df, grouped_df, selected_chart, selected_role, ai_
             f"the distribution of grant amounts over time, filtered by USD clusters ({', '.join(map(str, selected_clusters))}) "
             f"and year range ({start_year} to {end_year})"
         )
-        pre_prompt = generate_page_prompt(df, grouped_df, selected_chart, selected_role, additional_context)
+        pre_prompt = generate_page_prompt(
+            df, grouped_df, selected_chart, selected_role, additional_context
+        )
         # Render chat in a right-side column to keep main content centered
         col_main, col_chat = st.columns([8, 3], gap="large")
         with col_main:
             st.empty()
         with col_chat:
-            chat_panel(filtered_df, pre_prompt, state_key="scatter_chat", title="Scatter — AI Assistant")
+            chat_panel(
+                filtered_df, pre_prompt, state_key="scatter_chat", title="Scatter — AI Assistant"
+            )
     else:
-        st.info("AI-assisted analysis is disabled. Please provide an API key to enable this feature.")
+        st.info(
+            "AI-assisted analysis is disabled. Please provide an API key to enable this feature."
+        )
 
     # Download Data as CSV
     if st.button("Download Data as CSV"):

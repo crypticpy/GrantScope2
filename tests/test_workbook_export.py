@@ -1,7 +1,4 @@
-import re
-from typing import Any, Dict
-
-import pytest
+from typing import Any
 
 # Import build_workbook_bundle with flexible path resolution (repo or package)
 try:
@@ -11,11 +8,11 @@ except Exception:  # pragma: no cover
 
 
 def _make_bundle(
-    profile: Dict[str, Any] | None = None,
-    planner: Dict[str, Any] | None = None,
-    budget: Dict[str, Any] | None = None,
-    insights: Dict[str, Any] | None = None,
-) -> Dict[str, Any]:
+    profile: dict[str, Any] | None = None,
+    planner: dict[str, Any] | None = None,
+    budget: dict[str, Any] | None = None,
+    insights: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """Helper to call the builder with defaults."""
     return build_workbook_bundle(profile or {}, planner or {}, budget or {}, insights or {})
 

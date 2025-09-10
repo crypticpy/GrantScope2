@@ -1,16 +1,26 @@
 import os
-import streamlit as st
-from utils.app_state import init_session_state, sidebar_controls, get_session_profile, set_session_profile
-from utils.onboarding import OnboardingWizard
-from config import is_enabled
 
+import streamlit as st
+
+from utils.app_state import (
+    get_session_profile,
+    init_session_state,
+    set_session_profile,
+    sidebar_controls,
+)
+from utils.onboarding import OnboardingWizard
 
 st.set_page_config(page_title="GrantScope", page_icon=":chart_with_upwards_trend:")
 
 
 def _legacy_enabled() -> bool:
     """Return True if the legacy single-file router is enabled via env var."""
-    return str(os.getenv("GS_ENABLE_LEGACY_ROUTER", "0")).strip().lower() in ("1", "true", "yes", "on")
+    return str(os.getenv("GS_ENABLE_LEGACY_ROUTER", "0")).strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
 
 
 def legacy_main() -> None:
@@ -18,13 +28,13 @@ def legacy_main() -> None:
     # Lazy imports to avoid overhead unless legacy mode is explicitly enabled
     from loaders.data_loader import load_data, preprocess_data  # local import
     from plots.data_summary import data_summary  # local import
-    from plots.grant_amount_distribution import grant_amount_distribution  # local import
-    from plots.grant_amount_scatter_plot import grant_amount_scatter_plot  # local import
-    from plots.grant_amount_heatmap import grant_amount_heatmap  # local import
-    from plots.grant_description_word_clouds import grant_description_word_clouds  # local import
-    from plots.treemaps_extended_analysis import treemaps_extended_analysis  # local import
     from plots.general_analysis_relationships import general_analysis_relationships  # local import
+    from plots.grant_amount_distribution import grant_amount_distribution  # local import
+    from plots.grant_amount_heatmap import grant_amount_heatmap  # local import
+    from plots.grant_amount_scatter_plot import grant_amount_scatter_plot  # local import
+    from plots.grant_description_word_clouds import grant_description_word_clouds  # local import
     from plots.top_categories_unique_grants import top_categories_unique_grants  # local import
+    from plots.treemaps_extended_analysis import treemaps_extended_analysis  # local import
     from utils.utils import build_sample_grants_json, download_text  # local import
 
     # Sidebar controls (upload, API key, user role, sample download)
@@ -111,9 +121,9 @@ def main() -> None:
         legacy_main()
         return
 
-    # Check if we need to show onboarding for newbie mode
+    # Show onboarding by default on first run (no feature flag required)
     profile = get_session_profile()
-    if is_enabled("GS_ENABLE_NEWBIE_MODE") and (profile is None or not profile.completed_onboarding):
+    if profile is None or not getattr(profile, "completed_onboarding", False):
         wizard = OnboardingWizard()
         new_profile, completed = wizard.render(profile)
         if completed and new_profile:
@@ -127,10 +137,11 @@ def main() -> None:
 
     # Multipage landing: keep it light; shared state lives in utils/app_state.py and individual pages
     st.title("GrantScope Dashboard")
-    
+
     # Show user info if available
     if profile and profile.completed_onboarding:
         from utils.app_state import role_label
+
         st.info(f"Welcome back! You're set up as: {role_label(profile.experience_level)}")
     else:
         st.info(

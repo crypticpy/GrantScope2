@@ -1,27 +1,34 @@
+import importlib
 import os
+from collections.abc import Iterable
+from typing import Any, cast
+
 import streamlit as st
 from llama_index.core import Settings
+
 # from llama_index.experimental.query_engine import PandasQueryEngine  # disabled: avoids safe_eval-based code execution
 from llama_index.llms.openai import OpenAI as LI_OpenAI
 from openai import OpenAI as OpenAIClient
-from typing import Any, Iterable, cast
 from openai.types.chat import ChatCompletionMessageParam, ChatCompletionToolParam
-import importlib
+
 
 def _disable_pandas_query_engine() -> None:
     """Disable LlamaIndex PandasQueryEngine by stubbing it with a clear error."""
     try:
         exp_mod = importlib.import_module("llama_index.experimental.query_engine")
+
         class _DisabledPandasQueryEngine:  # pragma: no cover - defensive stub
             def __init__(self, *args, **kwargs):
                 raise RuntimeError(
                     "PandasQueryEngine is disabled for safety in this build. "
                     "Use the tool_query() pipeline (function-calling tools) instead."
                 )
-        setattr(exp_mod, "PandasQueryEngine", _DisabledPandasQueryEngine)
+
+        exp_mod.PandasQueryEngine = _DisabledPandasQueryEngine
     except Exception:
         # If experimental package not present or structure changes, ignore silently
         pass
+
 
 _disable_pandas_query_engine()
 
@@ -118,28 +125,34 @@ def get_openai_client() -> OpenAIClient:
         class _DummyMsg:
             def __init__(self, content: str = "OK"):
                 self.content = content
+
         class _DummyChoice:
             def __init__(self, message):
                 self.message = message
+
         class _DummyResp:
             def __init__(self, content: str = "OK"):
                 self.choices = [_DummyChoice(_DummyMsg(content))]
+
         class _DummyStream(list):
             # Behaves like an empty iterable for streaming paths
             pass
+
         class _DummyCompletions:
             def create(self, **kwargs):
                 if kwargs.get("stream"):
                     return _DummyStream()
                 return _DummyResp("OK")
+
         class _DummyChat:
             def __init__(self):
                 self.completions = _DummyCompletions()
+
         class _DummyClient:
             def __init__(self):
                 self.chat = _DummyChat()
-        return _DummyClient()
 
+        return _DummyClient()
 
 
 def resolve_chart_context(chart_id: str) -> str | None:
@@ -217,6 +230,8 @@ def resolve_chart_context(chart_id: str) -> str | None:
         ),
     }
     return context_map.get(str(chart_id).strip() or "", None)
+
+
 # Compact "User Context" wedge builder (centralized helper)
 def _build_user_context_wedge(max_len: int = 160) -> str | None:
     """Construct a compact 'User Context:' wedge using org_type, region, and a short goal.
@@ -266,6 +281,7 @@ def _build_user_context_wedge(max_len: int = 160) -> str | None:
         # Fail closed; context injection is optional
         return None
 
+
 def _build_planner_budget_wedge(max_len: int = 240) -> str | None:
     """Construct a compact wedge summarizing planner and budget when present.
 
@@ -274,10 +290,13 @@ def _build_planner_budget_wedge(max_len: int = 240) -> str | None:
     """
     try:
         try:
-            from utils.app_state import get_planner_summary, get_budget_summary  # type: ignore
+            from utils.app_state import get_budget_summary, get_planner_summary  # type: ignore
         except Exception:
             try:
-                from GrantScope.utils.app_state import get_planner_summary, get_budget_summary  # type: ignore
+                from GrantScope.utils.app_state import (  # type: ignore
+                    get_budget_summary,
+                    get_planner_summary,
+                )
             except Exception:
                 return None
 
@@ -305,10 +324,11 @@ def _build_planner_budget_wedge(max_len: int = 240) -> str | None:
     except Exception:
         return None
 
+
 # Function to query data (non-streaming) without executing generated Pandas code
 def query_data(df, query_text, pre_prompt):
     """Return a full, non-streamed answer using direct OpenAI chat completion (no Pandas code execution).
-    
+
     Adds a compact 'User Context:' wedge (<=160 chars) when a session profile exists, and includes
     Known Columns and any chart-specific context if available.
     """
@@ -337,7 +357,9 @@ def query_data(df, query_text, pre_prompt):
             from utils.app_state import get_selected_chart as _get_sel  # type: ignore
         except Exception:
             try:
-                from GrantScope.utils.app_state import get_selected_chart as _get_sel  # type: ignore
+                from GrantScope.utils.app_state import (
+                    get_selected_chart as _get_sel,  # type: ignore
+                )
             except Exception:
                 _get_sel = None  # type: ignore
         if _get_sel is not None:
@@ -726,7 +748,11 @@ def tool_query(df, query_text: str, pre_prompt: str, extra_ctx: str | None = Non
                         "values": {
                             "type": "array",
                             "items": {
-                                "anyOf": [{"type": "string"}, {"type": "number"}, {"type": "boolean"}]
+                                "anyOf": [
+                                    {"type": "string"},
+                                    {"type": "number"},
+                                    {"type": "boolean"},
+                                ]
                             },
                             "description": "Non-empty list of values to match.",
                         },
@@ -764,7 +790,11 @@ def tool_query(df, query_text: str, pre_prompt: str, extra_ctx: str | None = Non
                         "index": {"type": "array", "items": {"type": "string"}, "default": []},
                         "columns": {"type": "array", "items": {"type": "string"}, "default": []},
                         "value": {"type": "string"},
-                        "agg": {"type": "string", "enum": ["sum", "mean", "count"], "default": "sum"},
+                        "agg": {
+                            "type": "string",
+                            "enum": ["sum", "mean", "count"],
+                            "default": "sum",
+                        },
                         "top": {"type": "integer", "default": 20, "minimum": 1},
                     },
                     "required": ["value"],
@@ -794,10 +824,13 @@ def tool_query(df, query_text: str, pre_prompt: str, extra_ctx: str | None = Non
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "sql": {"type": "string", "description": "SELECT/WITH query referencing table 't'"},
-                        "limit": {"type": "integer", "default": 50, "minimum": 1}
+                        "sql": {
+                            "type": "string",
+                            "description": "SELECT/WITH query referencing table 't'",
+                        },
+                        "limit": {"type": "integer", "default": 50, "minimum": 1},
                     },
-                    "required": ["sql"]
+                    "required": ["sql"],
                 },
             },
         },
@@ -856,6 +889,7 @@ def tool_query(df, query_text: str, pre_prompt: str, extra_ctx: str | None = Non
                     pass
                 try:
                     import json  # local import to avoid global import changes
+
                     args = json.loads(tc.function.arguments or "{}")
                 except Exception:
                     args = {}
@@ -894,7 +928,7 @@ def tool_query(df, query_text: str, pre_prompt: str, extra_ctx: str | None = Non
                     content = _df_filter_equals_tool(
                         df,
                         args.get("column") or "",
-                        args.get("value", None),
+                        args.get("value"),
                         args.get("limit", 50),
                     )
                 elif name == "df_filter_in":
@@ -959,6 +993,7 @@ def tool_query(df, query_text: str, pre_prompt: str, extra_ctx: str | None = Non
             return content.replace("$", "\\$")
     except Exception as e:
         return f"Tool-assisted query error: {e}"
+
 
 def _df_value_counts_tool(df, column: str, n: int = 20, normalize: bool = False) -> str:
     """Tool: value counts for a column (optionally normalized)."""
@@ -1090,7 +1125,7 @@ def _df_corr_top_tool(df, target: str, n: int = 5) -> str:
         if target not in df.columns:
             return f"[df_corr_top error] invalid target column: {target}"
         try:
-            import pandas as pd
+            pass
         except Exception:
             return "[df_corr_top error] pandas not available"
         num = df.select_dtypes(include="number")
@@ -1119,8 +1154,18 @@ def _df_sql_select_tool(df, sql: str, limit: int = 50) -> str:
         if ";" in lower:
             return "[df_sql_select error] semicolons are not allowed"
         forbidden = (
-            " insert ", " update ", " delete ", " create ", " alter ", " drop ",
-            " attach ", " copy ", " replace ", " merge ", " vacuum ", " pragma "
+            " insert ",
+            " update ",
+            " delete ",
+            " create ",
+            " alter ",
+            " drop ",
+            " attach ",
+            " copy ",
+            " replace ",
+            " merge ",
+            " vacuum ",
+            " pragma ",
         )
         if any(tok in f" {lower} " for tok in forbidden):
             return "[df_sql_select error] disallowed keyword detected"
@@ -1146,12 +1191,15 @@ def _get_chart_state_tool() -> str:
     try:
         import json
         from typing import Any
+
         # Try both import paths for app_state getter
         try:
             from utils.app_state import get_selected_chart as _get_sel  # type: ignore
         except Exception:
             try:
-                from GrantScope.utils.app_state import get_selected_chart as _get_sel  # type: ignore
+                from GrantScope.utils.app_state import (
+                    get_selected_chart as _get_sel,  # type: ignore
+                )
             except Exception:
                 _get_sel = None  # type: ignore
 

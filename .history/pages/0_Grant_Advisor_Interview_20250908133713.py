@@ -152,46 +152,46 @@ def _get_report_id(interview_data: Dict[str, Any], df: pd.DataFrame) -> str:
     try:
         from advisor.pipeline.cache import cache_key_for
         from advisor.pipeline.imports import stable_hash_for_obj
-        
+
         key = cache_key_for(interview_data, df)
         return f"RPT-{stable_hash_for_obj({'k': key})[:8].upper()}"
     except Exception:
         # Fallback to timestamp if imports fail
         import time
+
         return f"RPT-{int(time.time())}"
 
 
-def _run_pipeline_with_progress(interview: InterviewInput, df: pd.DataFrame, report_id: str, progress_placeholder) -> Optional[Any]:
+def _run_pipeline_with_progress(
+    interview: InterviewInput, df: pd.DataFrame, report_id: str, progress_placeholder
+) -> Optional[Any]:
     """Run the pipeline with real-time progress updates."""
     try:
         # Initialize progress state
         progress_key = f"advisor_progress_{report_id}"
         st.session_state[progress_key] = {"current_stage": -1, "status": "pending"}
-        
+
         # Show initial progress
         with progress_placeholder:
             render_live_progress_tracker(report_id, show_estimates=True)
-        
+
         # Run pipeline with progress callback
         report = run_interview_pipeline(interview, df)
-        
+
         # Mark final stage as complete
         if progress_key in st.session_state:
-            st.session_state[progress_key].update({
-                "current_stage": len(STAGES) - 1,
-                "status": "completed"
-            })
-        
+            st.session_state[progress_key].update(
+                {"current_stage": len(STAGES) - 1, "status": "completed"}
+            )
+
         return report
-        
+
     except Exception as e:
         # Mark as error
         progress_key = f"advisor_progress_{report_id}"
         if progress_key in st.session_state:
             st.session_state[progress_key]["status"] = "error"
         raise e
-
-
 
 
 def render_interview_page() -> None:
@@ -208,17 +208,21 @@ def render_interview_page() -> None:
         profile = get_session_profile()
         if is_newbie(profile):
             with st.expander("👋 What you'll get from this interview", expanded=True):
-                st.markdown("""
+                st.markdown(
+                    """
                 - A simple project summary in plain English
                 - A short list of potential funders to research
                 - Clear next steps to get grant-ready
-                """)
-            st.success("""
+                """
+                )
+            st.success(
+                """
             Quick checklist before you start:
             1) Know your rough budget and timeline
             2) List who benefits and how
             3) Have a short description of your project
-            """)
+            """
+            )
     except Exception:
         pass
 
@@ -272,41 +276,67 @@ def render_interview_page() -> None:
         except Exception:
             newbie = True
 
-        program_area = st.text_input("Program Area", value=fvals.get("program_area", ""),
-                                     help=("What is your project about? (e.g., after-school program, food pantry)" if newbie else None))
+        program_area = st.text_input(
+            "Program Area",
+            value=fvals.get("program_area", ""),
+            help=(
+                "What is your project about? (e.g., after-school program, food pantry)"
+                if newbie
+                else None
+            ),
+        )
         populations_txt = st.text_input(
-            "Populations (comma-separated)", value=", ".join(fvals.get("populations", [])),
-            help=("Who will benefit? (e.g., middle school students, seniors, veterans)" if newbie else None)
+            "Populations (comma-separated)",
+            value=", ".join(fvals.get("populations", [])),
+            help=(
+                "Who will benefit? (e.g., middle school students, seniors, veterans)"
+                if newbie
+                else None
+            ),
         )
         geography_txt = st.text_input(
-            "Geography (comma-separated region/state/country)", value=", ".join(fvals.get("geography", [])),
-            help=("Where does the project take place? (e.g., California, NYC)" if newbie else None)
+            "Geography (comma-separated region/state/country)",
+            value=", ".join(fvals.get("geography", [])),
+            help=("Where does the project take place? (e.g., California, NYC)" if newbie else None),
         )
         timeframe_years = st.number_input(
-            "Timeframe (years, optional)", min_value=0, max_value=10, value=int(fvals.get("timeframe_years") or 0),
+            "Timeframe (years, optional)",
+            min_value=0,
+            max_value=10,
+            value=int(fvals.get("timeframe_years") or 0),
         )
         budget_range_txt = st.text_input(
-            "Budget USD Range (min,max optional)", value=", ".join(map(str, fvals.get("budget_usd_range", []))) or "",
-            help=("Example: 10000, 50000 (if unsure, start with a small range)" if newbie else None)
+            "Budget USD Range (min,max optional)",
+            value=", ".join(map(str, fvals.get("budget_usd_range", []))) or "",
+            help=(
+                "Example: 10000, 50000 (if unsure, start with a small range)" if newbie else None
+            ),
         )
         outcomes_txt = st.text_input(
-            "Outcomes (comma-separated)", value=", ".join(fvals.get("outcomes", [])),
-            help=("What changes will happen because of this project?" if newbie else None)
+            "Outcomes (comma-separated)",
+            value=", ".join(fvals.get("outcomes", [])),
+            help=("What changes will happen because of this project?" if newbie else None),
         )
         constraints_txt = st.text_input(
-            "Constraints (comma-separated)", value=", ".join(fvals.get("constraints", [])),
-            help=("What might be hard? (e.g., staffing, timeline)" if newbie else None)
+            "Constraints (comma-separated)",
+            value=", ".join(fvals.get("constraints", [])),
+            help=("What might be hard? (e.g., staffing, timeline)" if newbie else None),
         )
         funder_types_txt = st.text_input(
-            "Preferred Funder Types (comma-separated)", value=", ".join(fvals.get("preferred_funder_types", [])),
-            help=("Examples: foundations, corporations, government" if newbie else None)
+            "Preferred Funder Types (comma-separated)",
+            value=", ".join(fvals.get("preferred_funder_types", [])),
+            help=("Examples: foundations, corporations, government" if newbie else None),
         )
         keywords_txt = st.text_input(
-            "Keywords (comma-separated)", value=", ".join(fvals.get("keywords", [])),
-            help=("Important words for your project (e.g., STEM, literacy)" if newbie else None)
+            "Keywords (comma-separated)",
+            value=", ".join(fvals.get("keywords", [])),
+            help=("Important words for your project (e.g., STEM, literacy)" if newbie else None),
         )
-        notes = st.text_area("Notes", value=fvals.get("notes", ""),
-                             help=("Any extra context you'd like to add" if newbie else None))
+        notes = st.text_area(
+            "Notes",
+            value=fvals.get("notes", ""),
+            help=("Any extra context you'd like to add" if newbie else None),
+        )
         # Bind to global selected role for consistency
         user_role = selected_role
 
@@ -322,27 +352,27 @@ def render_interview_page() -> None:
             st.error("Data not available for analysis.")
         else:
             _analysis_start_toast()
-            
+
             # Generate report ID for progress tracking
             report_id = _get_report_id(form_vals, df_nonnull)
-            
+
             # Create placeholder for progress tracker
             progress_placeholder = st.empty()
-            
+
             # Run the pipeline
             try:
                 report = run_interview_pipeline(interview, df_nonnull)
                 st.session_state["advisor_last_bundle"] = report
-                
+
                 # Clear progress tracker and show completion
                 progress_placeholder.empty()
                 st.success("✅ Demo analysis complete!")
-                
+
             except Exception as e:
                 progress_placeholder.empty()
                 st.error(f"Pipeline error: {e}")
                 return
-                
+
         render_report_streamlit(st.session_state["advisor_last_bundle"])
         st.stop()
 
@@ -357,7 +387,9 @@ def render_interview_page() -> None:
             if geography_txt:
                 bullets.append(f"List 3–5 local funders that support work in {geography_txt}.")
             if budget_range_txt:
-                bullets.append("Pick a realistic budget range and find funders with similar awards.")
+                bullets.append(
+                    "Pick a realistic budget range and find funders with similar awards."
+                )
             bullets.append("Collect basic documents: org overview, simple budget, timeline.")
             for b in bullets[:5]:
                 st.markdown(f"- {b}")
@@ -396,17 +428,18 @@ def render_interview_page() -> None:
         }
 
         df_nonnull2 = cast(pd.DataFrame, df) if df is not None else None
-        
+
         if df_nonnull2 is None:
             st.error("Data not available for analysis.")
         else:
             import threading, time
+
             # Generate report ID for progress tracking
             report_id = _get_report_id(st.session_state.get("advisor_form", {}), df_nonnull2)
             st.session_state["advisor_current_report_id"] = report_id
-            
+
             _analysis_start_toast()
-            
+
             # Background thread to run pipeline
             def _run_pipeline_bg():
                 try:
@@ -416,19 +449,19 @@ def render_interview_page() -> None:
                 except Exception as e:
                     st.session_state["advisor_error"] = str(e)
                     st.session_state["advisor_run_in_progress"] = False
-            
+
             if not st.session_state.get("advisor_run_in_progress"):
                 st.session_state["advisor_run_in_progress"] = True
                 t = threading.Thread(target=_run_pipeline_bg, daemon=True)
                 t.start()
-            
+
             # Create placeholder for progress tracker
             progress_placeholder = st.empty()
-            
+
             # Show live progress tracker and auto-refresh until completion
             with progress_placeholder:
                 render_live_progress_tracker(report_id, show_estimates=True)
-            
+
             if st.session_state.get("advisor_run_in_progress"):
                 last = st.session_state.get("advisor_last_refresh_ts", 0.0)
                 now = time.time()
@@ -451,7 +484,9 @@ def render_interview_page() -> None:
 
     # Restore from JSON
     st.subheader("Restore Report From JSON")
-    up = st.file_uploader("Upload an exported Advisor JSON", type=["json"], key="advisor_restore_upload")
+    up = st.file_uploader(
+        "Upload an exported Advisor JSON", type=["json"], key="advisor_restore_upload"
+    )
     if up is not None and st.button("Import Report JSON", key="import_report_json_btn"):
         try:
             restored = import_bundle_from_upload(up)
@@ -462,7 +497,11 @@ def render_interview_page() -> None:
             st.error(f"Failed to import JSON: {e}")
 
     # Show last bundle if available (helps persistence when navigating back)
-    if st.session_state.get("advisor_last_bundle") and not run_now and not st.session_state.get("advisor_demo_autorun"):
+    if (
+        st.session_state.get("advisor_last_bundle")
+        and not run_now
+        and not st.session_state.get("advisor_demo_autorun")
+    ):
         st.markdown("### Last Report")
         render_report_streamlit(st.session_state["advisor_last_bundle"])
 

@@ -1,25 +1,26 @@
 import base64
-from io import BytesIO
-
+import json
 import os
-from typing import Any
+from io import BytesIO
 
 import pandas as pd
 import streamlit as st
-import json
 
 # Fallback cache decorator for test environments without full Streamlit runtime
 try:
     _cache_data = st.cache_data  # type: ignore[attr-defined]
 except Exception:  # pragma: no cover - testing fallback
+
     def _cache_data(**_kwargs):  # type: ignore[misc]
         def _decorator(fn):
             return fn
+
         return _decorator
 
-def download_excel(df, filename, sheet_name: str = 'Sheet1'):
+
+def download_excel(df, filename, sheet_name: str = "Sheet1"):
     output = BytesIO()
-    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+    with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
         df.to_excel(writer, index=False, sheet_name=sheet_name[:31])
     output.seek(0)
     b64 = base64.b64encode(output.read()).decode()
@@ -171,7 +172,9 @@ def generate_page_prompt(
 
     # States
     if "funder_state" in df.columns:
-        top_states = tuple([str(s) for s in df["funder_state"].dropna().astype(str).unique().tolist()])
+        top_states = tuple(
+            [str(s) for s in df["funder_state"].dropna().astype(str).unique().tolist()]
+        )
     else:
         top_states = tuple()
 
@@ -204,9 +207,9 @@ def download_multi_sheet_excel(sheets: dict, filename: str):
     Returns an href download link; also prints it via st.markdown for convenience.
     """
     output = BytesIO()
-    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+    with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
         for name, df in sheets.items():
-            safe_name = str(name)[:31] if name else 'Sheet1'
+            safe_name = str(name)[:31] if name else "Sheet1"
             df.to_excel(writer, index=False, sheet_name=safe_name)
     output.seek(0)
     b64 = base64.b64encode(output.read()).decode()
@@ -269,7 +272,7 @@ def build_sample_grants_json() -> str:
                 "year_issued": "2023",
                 "grant_duration": "12",
                 "grant_description": "Support for expanding youth education programs.",
-                "last_updated": "2024-12-31"
+                "last_updated": "2024-12-31",
             }
         ]
     }

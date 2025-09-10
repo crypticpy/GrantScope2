@@ -1,6 +1,7 @@
 import os
 import streamlit as st
 from llama_index.core import Settings
+
 # from llama_index.experimental.query_engine import PandasQueryEngine  # disabled: avoids safe_eval-based code execution
 from llama_index.llms.openai import OpenAI as LI_OpenAI
 from openai import OpenAI as OpenAIClient
@@ -8,20 +9,24 @@ from typing import Any, Iterable, cast
 from openai.types.chat import ChatCompletionMessageParam, ChatCompletionToolParam
 import importlib
 
+
 def _disable_pandas_query_engine() -> None:
     """Disable LlamaIndex PandasQueryEngine by stubbing it with a clear error."""
     try:
         exp_mod = importlib.import_module("llama_index.experimental.query_engine")
+
         class _DisabledPandasQueryEngine:  # pragma: no cover - defensive stub
             def __init__(self, *args, **kwargs):
                 raise RuntimeError(
                     "PandasQueryEngine is disabled for safety in this build. "
                     "Use the tool_query() pipeline (function-calling tools) instead."
                 )
+
         setattr(exp_mod, "PandasQueryEngine", _DisabledPandasQueryEngine)
     except Exception:
         # If experimental package not present or structure changes, ignore silently
         pass
+
 
 _disable_pandas_query_engine()
 
@@ -66,7 +71,6 @@ def get_openai_client() -> OpenAIClient:
     # The OpenAI Python SDK v1+ uses environment variable OPENAI_API_KEY automatically.
     # We still import the class at module import time (see top) to avoid runtime import costs.
     return OpenAIClient()
-
 
 
 def resolve_chart_context(chart_id: str) -> str | None:
@@ -499,7 +503,11 @@ def tool_query(df, query_text: str, pre_prompt: str, extra_ctx: str | None = Non
                         "values": {
                             "type": "array",
                             "items": {
-                                "anyOf": [{"type": "string"}, {"type": "number"}, {"type": "boolean"}]
+                                "anyOf": [
+                                    {"type": "string"},
+                                    {"type": "number"},
+                                    {"type": "boolean"},
+                                ]
                             },
                             "description": "Non-empty list of values to match.",
                         },
@@ -537,7 +545,11 @@ def tool_query(df, query_text: str, pre_prompt: str, extra_ctx: str | None = Non
                         "index": {"type": "array", "items": {"type": "string"}, "default": []},
                         "columns": {"type": "array", "items": {"type": "string"}, "default": []},
                         "value": {"type": "string"},
-                        "agg": {"type": "string", "enum": ["sum", "mean", "count"], "default": "sum"},
+                        "agg": {
+                            "type": "string",
+                            "enum": ["sum", "mean", "count"],
+                            "default": "sum",
+                        },
                         "top": {"type": "integer", "default": 20, "minimum": 1},
                     },
                     "required": ["value"],
@@ -567,10 +579,13 @@ def tool_query(df, query_text: str, pre_prompt: str, extra_ctx: str | None = Non
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "sql": {"type": "string", "description": "SELECT/WITH query referencing table 't'"},
-                        "limit": {"type": "integer", "default": 50, "minimum": 1}
+                        "sql": {
+                            "type": "string",
+                            "description": "SELECT/WITH query referencing table 't'",
+                        },
+                        "limit": {"type": "integer", "default": 50, "minimum": 1},
                     },
-                    "required": ["sql"]
+                    "required": ["sql"],
                 },
             },
         },
@@ -629,6 +644,7 @@ def tool_query(df, query_text: str, pre_prompt: str, extra_ctx: str | None = Non
                     pass
                 try:
                     import json  # local import to avoid global import changes
+
                     args = json.loads(tc.function.arguments or "{}")
                 except Exception:
                     args = {}
@@ -732,6 +748,7 @@ def tool_query(df, query_text: str, pre_prompt: str, extra_ctx: str | None = Non
             return content.replace("$", "\\$")
     except Exception as e:
         return f"Tool-assisted query error: {e}"
+
 
 def _df_value_counts_tool(df, column: str, n: int = 20, normalize: bool = False) -> str:
     """Tool: value counts for a column (optionally normalized)."""
@@ -892,8 +909,18 @@ def _df_sql_select_tool(df, sql: str, limit: int = 50) -> str:
         if ";" in lower:
             return "[df_sql_select error] semicolons are not allowed"
         forbidden = (
-            " insert ", " update ", " delete ", " create ", " alter ", " drop ",
-            " attach ", " copy ", " replace ", " merge ", " vacuum ", " pragma "
+            " insert ",
+            " update ",
+            " delete ",
+            " create ",
+            " alter ",
+            " drop ",
+            " attach ",
+            " copy ",
+            " replace ",
+            " merge ",
+            " vacuum ",
+            " pragma ",
         )
         if any(tok in f" {lower} " for tok in forbidden):
             return "[df_sql_select error] disallowed keyword detected"
@@ -919,6 +946,7 @@ def _get_chart_state_tool() -> str:
     try:
         import json
         from typing import Any
+
         # Try both import paths for app_state getter
         try:
             from utils.app_state import get_selected_chart as _get_sel  # type: ignore

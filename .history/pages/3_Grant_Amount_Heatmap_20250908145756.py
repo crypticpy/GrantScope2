@@ -1,5 +1,6 @@
 import os, sys
 import streamlit as st
+
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from utils.app_state import init_session_state, sidebar_controls, get_data  # type: ignore
 from plots.grant_amount_heatmap import grant_amount_heatmap  # type: ignore

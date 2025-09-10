@@ -14,7 +14,6 @@ Additional helpers (internal but exported for convenience/tests):
 
 from __future__ import annotations
 
-from typing import Dict, List, Optional, Tuple
 import sys
 
 import streamlit as st
@@ -23,19 +22,28 @@ try:
     # Optional config integration (feature flags)
     from config import is_enabled as _is_enabled  # type: ignore
 except Exception:
+
     def _is_enabled(_flag: str) -> bool:  # fallback
         return False
 
 
 # Ordered guided flow: (slug, file, display label)
-_PAGE_SEQUENCE: List[Tuple[str, str, str]] = [
+_PAGE_SEQUENCE: list[tuple[str, str, str]] = [
     ("data_summary", "pages/1_Data_Summary.py", "Data Summary"),
-    ("grant_amount_distribution", "pages/2_Grant_Amount_Distribution.py", "Grant Amount Distribution"),
+    (
+        "grant_amount_distribution",
+        "pages/2_Grant_Amount_Distribution.py",
+        "Grant Amount Distribution",
+    ),
     ("grant_amount_scatter", "pages/4_Grant_Amount_Scatter_Plot.py", "Scatter (over time)"),
     ("grant_amount_heatmap", "pages/3_Grant_Amount_Heatmap.py", "Heatmap"),
     ("treemaps_extended", "pages/6_Treemaps_Extended_Analysis.py", "Treemaps"),
     ("grant_description_word_clouds", "pages/5_Grant_Description_Word_Clouds.py", "Word Clouds"),
-    ("general_analysis_relationships", "pages/7_General_Analysis_of_Relationships.py", "Relationships"),
+    (
+        "general_analysis_relationships",
+        "pages/7_General_Analysis_of_Relationships.py",
+        "Relationships",
+    ),
     ("top_categories_unique_grants", "pages/8_Top_Categories_Unique_Grants.py", "Top Categories"),
     ("budget_reality_check", "pages/12_Budget_Reality_Check.py", "Budget Reality Check"),
     ("project_planner", "pages/9_Project_Planner.py", "Project Planner"),
@@ -43,10 +51,10 @@ _PAGE_SEQUENCE: List[Tuple[str, str, str]] = [
 ]
 
 # Derived lookup maps
-_SLUG_TO_FILE: Dict[str, str] = {s: f for s, f, _ in _PAGE_SEQUENCE}
-_FILE_TO_SLUG: Dict[str, str] = {f: s for s, f, _ in _PAGE_SEQUENCE}
-_SLUG_TO_LABEL: Dict[str, str] = {s: lbl for s, _, lbl in _PAGE_SEQUENCE}
-_FILE_TO_LABEL: Dict[str, str] = {f: lbl for s, f, lbl in _PAGE_SEQUENCE}
+_SLUG_TO_FILE: dict[str, str] = {s: f for s, f, _ in _PAGE_SEQUENCE}
+_FILE_TO_SLUG: dict[str, str] = {f: s for s, f, _ in _PAGE_SEQUENCE}
+_SLUG_TO_LABEL: dict[str, str] = {s: lbl for s, _, lbl in _PAGE_SEQUENCE}
+_FILE_TO_LABEL: dict[str, str] = {f: lbl for s, f, lbl in _PAGE_SEQUENCE}
 
 
 def _normalize_identifier(identifier: str) -> str:
@@ -116,7 +124,7 @@ def push_breadcrumb(label: str, page_file: str) -> None:
         # Initialize session_state in extremely constrained environments (tests)
         try:
             if not hasattr(st, "session_state") or not isinstance(st.session_state, dict):
-                setattr(st, "session_state", {})  # type: ignore[attr-defined]
+                st.session_state = {}  # type: ignore[attr-defined]
         except Exception:
             return
         bc = []
@@ -148,13 +156,13 @@ def push_breadcrumb(label: str, page_file: str) -> None:
                 mod.session_state.update(st.session_state)  # type: ignore[attr-defined]
             except Exception:
                 # Fallback to direct assignment of the reference
-                setattr(mod, "session_state", st.session_state)  # type: ignore[attr-defined]
+                mod.session_state = st.session_state  # type: ignore[attr-defined]
     except Exception:
         # Non-fatal; navigation must not break page rendering
         pass
 
 
-def get_breadcrumbs() -> List[Dict[str, str]]:
+def get_breadcrumbs() -> list[dict[str, str]]:
     """Return the breadcrumbs list from session state, defaulting to empty list.
 
     Also ensures last_page_slug and next_page_slug are synced based on the
@@ -167,7 +175,7 @@ def get_breadcrumbs() -> List[Dict[str, str]]:
     bc = ss.get("breadcrumbs", [])
     if isinstance(bc, list):
         # Ensure normalized shape
-        cleaned: List[Dict[str, str]] = []
+        cleaned: list[dict[str, str]] = []
         for item in bc:
             if isinstance(item, dict) and "label" in item and "page" in item:
                 cleaned.append({"label": str(item["label"]), "page": str(item["page"])})
@@ -202,7 +210,7 @@ def clear_breadcrumbs() -> None:
             del st.session_state[key]
 
 
-def compute_continue_state(data_loaded: bool, next_label: Optional[str] = None) -> Tuple[bool, str]:
+def compute_continue_state(data_loaded: bool, next_label: str | None = None) -> tuple[bool, str]:
     """Determine if Continue should be enabled and the tooltip to show.
 
     Returns: (enabled, tooltip)

@@ -1,17 +1,20 @@
 from __future__ import annotations
-from typing import Any, Dict, List, Optional
+
+from typing import Any
+
 import pandas as pd
 
-from .imports import ChartSummary, FigureArtifact, _interpret_chart_cached
-from .ids import _stable_fig_id
-from .convert import _safe_to_dict
 from .cache import cache_key_for
+from .convert import _safe_to_dict
+from .ids import _stable_fig_id
+from .imports import ChartSummary, FigureArtifact, _interpret_chart_cached
+
 
 def _wrap_plot_as_figure(
     label: str,
     plot_obj: Any,
-    summary: Optional[ChartSummary] = None,
-    interpretation_text: Optional[str] = None,
+    summary: ChartSummary | None = None,
+    interpretation_text: str | None = None,
 ) -> FigureArtifact:
     """Wrap a Plotly-like object into a FigureArtifact with PNG (kaleido) or HTML fallback."""
     png_b64: str | None = None
@@ -22,6 +25,7 @@ def _wrap_plot_as_figure(
             try:
                 png_bytes_obj = to_image(format="png", engine="kaleido")
                 import base64
+
                 if isinstance(png_bytes_obj, (bytes, bytearray)):
                     png_b64 = base64.b64encode(png_bytes_obj).decode("utf-8")
                 else:
@@ -54,9 +58,10 @@ def _wrap_plot_as_figure(
         interpretation_text=interpretation_text,
     )
 
-def _figures_default(df: pd.DataFrame, interview, needs) -> List[FigureArtifact]:
+
+def _figures_default(df: pd.DataFrame, interview, needs) -> list[FigureArtifact]:
     """Build a minimal figure set using figures module with summaries and interpretations."""
-    out: List[FigureArtifact] = []
+    out: list[FigureArtifact] = []
     try:
         try:
             from GrantScope.advisor import figures as figs  # type: ignore
@@ -65,7 +70,7 @@ def _figures_default(df: pd.DataFrame, interview, needs) -> List[FigureArtifact]
 
         interview_dict = _safe_to_dict(interview)
 
-        def _chart_cache_key(kind: str, summary_dict: Dict[str, Any]) -> str:
+        def _chart_cache_key(kind: str, summary_dict: dict[str, Any]) -> str:
             try:
                 base = cache_key_for(interview, df)
             except Exception:
@@ -82,8 +87,8 @@ def _figures_default(df: pd.DataFrame, interview, needs) -> List[FigureArtifact]
                     top_df = prep(df, needs) if callable(prep) else None
                 except Exception:
                     top_df = None
-                highlights: List[str] = []
-                stats: Dict[str, Any] = {}
+                highlights: list[str] = []
+                stats: dict[str, Any] = {}
                 try:
                     if isinstance(top_df, pd.DataFrame) and not top_df.empty:
                         n = int(len(top_df))
@@ -101,8 +106,14 @@ def _figures_default(df: pd.DataFrame, interview, needs) -> List[FigureArtifact]
                     pass
                 summary = ChartSummary(label="Top Funders", highlights=highlights, stats=stats)
                 sdict = _safe_to_dict(summary)
-                interp = _interpret_chart_cached(_chart_cache_key("top_funders", sdict), sdict, interview_dict)
-                out.append(_wrap_plot_as_figure("Top Funders", plot_obj, summary=summary, interpretation_text=interp))
+                interp = _interpret_chart_cached(
+                    _chart_cache_key("top_funders", sdict), sdict, interview_dict
+                )
+                out.append(
+                    _wrap_plot_as_figure(
+                        "Top Funders", plot_obj, summary=summary, interpretation_text=interp
+                    )
+                )
 
         # Distribution of amounts
         if "amount_usd" in df.columns:
@@ -114,10 +125,14 @@ def _figures_default(df: pd.DataFrame, interview, needs) -> List[FigureArtifact]
                     ddf = prep2(df, needs) if callable(prep2) else None
                 except Exception:
                     ddf = None
-                highlights2: List[str] = []
-                stats2: Dict[str, Any] = {}
+                highlights2: list[str] = []
+                stats2: dict[str, Any] = {}
                 try:
-                    if isinstance(ddf, pd.DataFrame) and not ddf.empty and "amount_usd" in ddf.columns:
+                    if (
+                        isinstance(ddf, pd.DataFrame)
+                        and not ddf.empty
+                        and "amount_usd" in ddf.columns
+                    ):
                         series = pd.to_numeric(ddf["amount_usd"], errors="coerce").dropna()
                         stats2["count"] = int(series.shape[0])
                         stats2["median"] = float(series.median())
@@ -137,10 +152,21 @@ def _figures_default(df: pd.DataFrame, interview, needs) -> List[FigureArtifact]
                         stats2["count"] = 0
                 except Exception:
                     pass
-                summary2 = ChartSummary(label="Amount Distribution", highlights=highlights2, stats=stats2)
+                summary2 = ChartSummary(
+                    label="Amount Distribution", highlights=highlights2, stats=stats2
+                )
                 sdict2 = _safe_to_dict(summary2)
-                interp2 = _interpret_chart_cached(_chart_cache_key("amount_distribution", sdict2), sdict2, interview_dict)
-                out.append(_wrap_plot_as_figure("Amount Distribution", plot_obj2, summary=summary2, interpretation_text=interp2))
+                interp2 = _interpret_chart_cached(
+                    _chart_cache_key("amount_distribution", sdict2), sdict2, interview_dict
+                )
+                out.append(
+                    _wrap_plot_as_figure(
+                        "Amount Distribution",
+                        plot_obj2,
+                        summary=summary2,
+                        interpretation_text=interp2,
+                    )
+                )
 
         # Time trend by year
         if "year_issued" in df.columns and "amount_usd" in df.columns:
@@ -152,21 +178,31 @@ def _figures_default(df: pd.DataFrame, interview, needs) -> List[FigureArtifact]
                     tdf = prep3(df, needs) if callable(prep3) else None
                 except Exception:
                     tdf = None
-                highlights3: List[str] = []
-                stats3: Dict[str, Any] = {}
+                highlights3: list[str] = []
+                stats3: dict[str, Any] = {}
                 try:
                     if isinstance(tdf, pd.DataFrame) and not tdf.empty:
                         stats3["n_points"] = int(len(tdf))
                         sorted_df = tdf.sort_values("year_issued")
                         first_row = sorted_df.iloc[0]
                         last_row = sorted_df.iloc[-1]
-                        fy = int(first_row["year_issued"]) if pd.notna(first_row["year_issued"]) else None
-                        ly = int(last_row["year_issued"]) if pd.notna(last_row["year_issued"]) else None
+                        fy = (
+                            int(first_row["year_issued"])
+                            if pd.notna(first_row["year_issued"])
+                            else None
+                        )
+                        ly = (
+                            int(last_row["year_issued"])
+                            if pd.notna(last_row["year_issued"])
+                            else None
+                        )
                         _fv = pd.to_numeric(first_row["amount_usd"], errors="coerce")
                         _lv = pd.to_numeric(last_row["amount_usd"], errors="coerce")
                         fv = float(_fv) if pd.notna(_fv) else 0.0
                         lv = float(_lv) if pd.notna(_lv) else 0.0
-                        stats3.update({"first_year": fy, "last_year": ly, "first_total": fv, "last_total": lv})
+                        stats3.update(
+                            {"first_year": fy, "last_year": ly, "first_total": fv, "last_total": lv}
+                        )
                         if lv > fv:
                             highlights3.append("Total awarded amount increased over time")
                         elif lv < fv:
@@ -179,8 +215,14 @@ def _figures_default(df: pd.DataFrame, interview, needs) -> List[FigureArtifact]
                     pass
                 summary3 = ChartSummary(label="Time Trend", highlights=highlights3, stats=stats3)
                 sdict3 = _safe_to_dict(summary3)
-                interp3 = _interpret_chart_cached(_chart_cache_key("time_trend", sdict3), sdict3, interview_dict)
-                out.append(_wrap_plot_as_figure("Time Trend", plot_obj3, summary=summary3, interpretation_text=interp3))
+                interp3 = _interpret_chart_cached(
+                    _chart_cache_key("time_trend", sdict3), sdict3, interview_dict
+                )
+                out.append(
+                    _wrap_plot_as_figure(
+                        "Time Trend", plot_obj3, summary=summary3, interpretation_text=interp3
+                    )
+                )
     except Exception:
         return out
     return out

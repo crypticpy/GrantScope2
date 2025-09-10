@@ -1,5 +1,6 @@
 import sys
 from types import ModuleType
+
 import pytest
 
 
@@ -14,10 +15,11 @@ def _install_fake_ai_modules(monkeypatch):
     def _cache_resource(**_kwargs):
         def _decorator(fn):
             return fn
+
         return _decorator
 
-    setattr(st_mod, "cache_resource", _cache_resource)
-    setattr(st_mod, "session_state", {})  # simple dict-like
+    st_mod.cache_resource = _cache_resource
+    st_mod.session_state = {}  # simple dict-like
     monkeypatch.setitem(sys.modules, "streamlit", st_mod)
 
     # Stub openai and nested types.chat
@@ -26,7 +28,7 @@ def _install_fake_ai_modules(monkeypatch):
     class _OpenAI:  # placeholder class
         pass
 
-    setattr(openai_mod, "OpenAI", _OpenAI)
+    openai_mod.OpenAI = _OpenAI
     monkeypatch.setitem(sys.modules, "openai", openai_mod)
 
     oa_types_mod = ModuleType("openai.types")
@@ -38,8 +40,8 @@ def _install_fake_ai_modules(monkeypatch):
     class ChatCompletionToolParam:
         pass
 
-    setattr(oa_chat_mod, "ChatCompletionMessageParam", ChatCompletionMessageParam)
-    setattr(oa_chat_mod, "ChatCompletionToolParam", ChatCompletionToolParam)
+    oa_chat_mod.ChatCompletionMessageParam = ChatCompletionMessageParam
+    oa_chat_mod.ChatCompletionToolParam = ChatCompletionToolParam
     monkeypatch.setitem(sys.modules, "openai.types", oa_types_mod)
     monkeypatch.setitem(sys.modules, "openai.types.chat", oa_chat_mod)
 
@@ -50,7 +52,7 @@ def _install_fake_ai_modules(monkeypatch):
     class Settings:
         llm = None
 
-    setattr(li_core, "Settings", Settings)
+    li_core.Settings = Settings
     li_llms = ModuleType("llama_index.llms")
     li_llms_openai = ModuleType("llama_index.llms.openai")
 
@@ -58,7 +60,7 @@ def _install_fake_ai_modules(monkeypatch):
         def __init__(self, *args, **kwargs):
             self.model = kwargs.get("model")
 
-    setattr(li_llms_openai, "OpenAI", _LI_OpenAI)
+    li_llms_openai.OpenAI = _LI_OpenAI
 
     monkeypatch.setitem(sys.modules, "llama_index", li_pkg)
     monkeypatch.setitem(sys.modules, "llama_index.core", li_core)
@@ -122,7 +124,7 @@ def _install_fake_profile_module(monkeypatch, profile_obj):
     def _get_session_profile():
         return profile_obj
 
-    setattr(fake_mod, "get_session_profile", _get_session_profile)
+    fake_mod.get_session_profile = _get_session_profile
     # Ensure 'utils' package exists as a module so 'utils.app_state' resolves
     if "utils" not in sys.modules:
         sys.modules["utils"] = ModuleType("utils")
@@ -138,7 +140,9 @@ class TestUserContextWedge:
         class P:
             org_type = "nonprofit"
             region = "California"
-            primary_goal = " ".join(["expand after school programs for underserved communities"] * 5)
+            primary_goal = " ".join(
+                ["expand after school programs for underserved communities"] * 5
+            )
 
         _install_fake_profile_module(monkeypatch, P())
         from loaders.llama_index_setup import _build_user_context_wedge  # import after patch

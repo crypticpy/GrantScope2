@@ -1,5 +1,6 @@
 import sys
 from types import ModuleType
+
 import pytest
 
 
@@ -11,16 +12,18 @@ def _install_fake_runtime_modules(monkeypatch):
     def _cache_resource(**_kwargs):
         def _decorator(fn):
             return fn
+
         return _decorator
 
     def _cache_data(**_kwargs):
         def _decorator(fn):
             return fn
+
         return _decorator
 
-    setattr(st_mod, "cache_resource", _cache_resource)
-    setattr(st_mod, "cache_data", _cache_data)
-    setattr(st_mod, "session_state", {})  # simple dict-like
+    st_mod.cache_resource = _cache_resource
+    st_mod.cache_data = _cache_data
+    st_mod.session_state = {}  # simple dict-like
     monkeypatch.setitem(sys.modules, "streamlit", st_mod)
 
     # Stub openai and nested types.chat used only for typing in loaders.llama_index_setup
@@ -29,7 +32,7 @@ def _install_fake_runtime_modules(monkeypatch):
     class _OpenAI:  # placeholder class
         pass
 
-    setattr(openai_mod, "OpenAI", _OpenAI)
+    openai_mod.OpenAI = _OpenAI
     monkeypatch.setitem(sys.modules, "openai", openai_mod)
 
     oa_types_mod = ModuleType("openai.types")
@@ -41,8 +44,8 @@ def _install_fake_runtime_modules(monkeypatch):
     class ChatCompletionToolParam:
         pass
 
-    setattr(oa_chat_mod, "ChatCompletionMessageParam", ChatCompletionMessageParam)
-    setattr(oa_chat_mod, "ChatCompletionToolParam", ChatCompletionToolParam)
+    oa_chat_mod.ChatCompletionMessageParam = ChatCompletionMessageParam
+    oa_chat_mod.ChatCompletionToolParam = ChatCompletionToolParam
     monkeypatch.setitem(sys.modules, "openai.types", oa_types_mod)
     monkeypatch.setitem(sys.modules, "openai.types.chat", oa_chat_mod)
 
@@ -53,7 +56,7 @@ def _install_fake_runtime_modules(monkeypatch):
     class Settings:
         llm = None
 
-    setattr(li_core, "Settings", Settings)
+    li_core.Settings = Settings
     li_llms = ModuleType("llama_index.llms")
     li_llms_openai = ModuleType("llama_index.llms.openai")
 
@@ -61,7 +64,7 @@ def _install_fake_runtime_modules(monkeypatch):
         def __init__(self, *args, **kwargs):
             self.model = kwargs.get("model")
 
-    setattr(li_llms_openai, "OpenAI", _LI_OpenAI)
+    li_llms_openai.OpenAI = _LI_OpenAI
 
     monkeypatch.setitem(sys.modules, "llama_index", li_pkg)
     monkeypatch.setitem(sys.modules, "llama_index.core", li_core)
@@ -114,7 +117,9 @@ class DummyOpenAIClient:
         self.last_kwargs: dict | None = None
 
 
-def _install_fake_app_state_with_summaries(monkeypatch, planner_text: str | None, budget_text: str | None):
+def _install_fake_app_state_with_summaries(
+    monkeypatch, planner_text: str | None, budget_text: str | None
+):
     """
     Install a fake 'utils.app_state' module into sys.modules with get_planner_summary/get_budget_summary
     returning provided strings (or None).
@@ -127,8 +132,8 @@ def _install_fake_app_state_with_summaries(monkeypatch, planner_text: str | None
     def _get_budget_summary():
         return budget_text
 
-    setattr(fake_mod, "get_planner_summary", _get_planner_summary)
-    setattr(fake_mod, "get_budget_summary", _get_budget_summary)
+    fake_mod.get_planner_summary = _get_planner_summary
+    fake_mod.get_budget_summary = _get_budget_summary
     # Ensure 'utils' package exists as a module so 'utils.app_state' resolves
     if "utils" not in sys.modules:
         sys.modules["utils"] = ModuleType("utils")
@@ -141,7 +146,9 @@ def _install_fake_app_state_with_summaries(monkeypatch, planner_text: str | None
 class TestPlannerBudgetWedge:
     def test_build_planner_budget_wedge_present(self, monkeypatch):
         # Arrange: provide fake summaries
-        _install_fake_app_state_with_summaries(monkeypatch, "Planner: name=MyProj.", "Budget: total=$10,000.")
+        _install_fake_app_state_with_summaries(
+            monkeypatch, "Planner: name=MyProj.", "Budget: total=$10,000."
+        )
         # Import after patch
         from loaders.llama_index_setup import _build_planner_budget_wedge  # type: ignore
 

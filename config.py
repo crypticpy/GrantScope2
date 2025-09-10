@@ -13,8 +13,8 @@ Notes:
 from __future__ import annotations
 
 import os
-from functools import lru_cache
-from typing import Any, Dict, Optional
+from functools import cache
+from typing import Any
 
 # Optional Streamlit import (module must work in non-Streamlit contexts, e.g., CLI tools)
 try:
@@ -26,14 +26,16 @@ except Exception:  # pragma: no cover - environment without streamlit
 try:
     from dotenv import load_dotenv
 except Exception:  # pragma: no cover - should be available via requirements, but keep safe
+
     def load_dotenv(*args: Any, **kwargs: Any) -> bool:
         return False
+
 
 # Read .env if present; do not override already-set variables
 load_dotenv(override=False)
 
 
-def _secrets_get(key: str, default: Optional[str] = None) -> Optional[str]:
+def _secrets_get(key: str, default: str | None = None) -> str | None:
     """
     Read a value from st.secrets if Streamlit is available; otherwise return default.
     """
@@ -55,7 +57,7 @@ def _secrets_get(key: str, default: Optional[str] = None) -> Optional[str]:
         return default
 
 
-def _get_value(key: str, default: Optional[str] = None) -> Optional[str]:
+def _get_value(key: str, default: str | None = None) -> str | None:
     """
     Fetch config value with precedence: st.secrets -> os.environ -> default.
     Empty strings are treated as unset.
@@ -73,30 +75,30 @@ def _get_value(key: str, default: Optional[str] = None) -> Optional[str]:
     return default
 
 
-def _parse_bool(value: Optional[str], default: bool = False) -> bool:
+def _parse_bool(value: str | None, default: bool = False) -> bool:
     if value is None:
         return default
     val = str(value).strip().lower()
     return val in {"1", "true", "yes", "on", "y", "t"}
 
 
-@lru_cache(maxsize=None)
-def get_openai_api_key() -> Optional[str]:
+@cache
+def get_openai_api_key() -> str | None:
     """
     Return OpenAI API key or None if not set anywhere.
     """
     return _get_value("OPENAI_API_KEY")
 
 
-@lru_cache(maxsize=None)
-def get_candid_key() -> Optional[str]:
+@cache
+def get_candid_key() -> str | None:
     """
     Return Candid API key (CANDID_API_KEY) or None if not set.
     """
     return _get_value("CANDID_API_KEY")
 
 
-@lru_cache(maxsize=None)
+@cache
 def get_model_name(default: str = "gpt-5-mini") -> str:
     """
     Return model name used by LLMs. Defaults to 'gpt-5-mini' when not set.
@@ -105,7 +107,7 @@ def get_model_name(default: str = "gpt-5-mini") -> str:
     return _get_value("OPENAI_MODEL", default) or default
 
 
-@lru_cache(maxsize=None)
+@cache
 def is_feature_enabled(flag_name: str, default: bool = False) -> bool:
     """
     Return True/False for a feature flag, using precedence and tolerant parsing.
@@ -123,8 +125,8 @@ def is_feature_enabled(flag_name: str, default: bool = False) -> bool:
     return default
 
 
-@lru_cache(maxsize=None)
-def feature_flags() -> Dict[str, bool]:
+@cache
+def feature_flags() -> dict[str, bool]:
     """
     Return a dict of known feature flags with resolved boolean values.
     """
@@ -164,14 +166,15 @@ def require_flag(flag_name: str, ui_msg: str = "Feature is disabled") -> bool:
     """
     if is_enabled(flag_name):
         return True
-    
+
     # Try to show message via Streamlit if available
     try:
         import streamlit as st  # type: ignore
+
         st.info(f"{ui_msg}. Set {flag_name}=1 to enable.")
     except Exception:
         pass
-    
+
     return False
 
 

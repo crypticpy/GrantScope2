@@ -75,29 +75,30 @@ def get_stage_info(backend_name: str) -> Optional[Dict]:
 
 def create_progress_callback(report_id: str) -> callable:
     """Create a callback function that updates the UI progress state."""
-    
+
     def update_progress(stage_index: int, status: str, message: str = "") -> None:
         """Update the progress state in session_state."""
         from contextlib import suppress
+
         with suppress(Exception):
             with _LOCK:
                 _ = (report_id, stage_index, status, message)
-    
+
     return update_progress
 
 
 def render_live_progress_tracker(report_id: str, show_estimates: bool = True) -> None:
     """Render the animated step tracker with live progress."""
-    
+
     progress_data = get_progress_state(report_id)
     current_stage = progress_data.get("current_stage", -1)
     status = progress_data.get("status", "pending")
-    
+
     st.markdown("### Analysis Progress")
-    
+
     # Create a container for the progress tracker
     progress_container = st.container()
-    
+
     with progress_container:
         for i, stage in enumerate(STAGES):
             # Determine the stage status
@@ -108,7 +109,7 @@ def render_live_progress_tracker(report_id: str, show_estimates: bool = True) ->
                     st.success("✅")
                 with col2:
                     st.success(f"{stage['icon']} {stage['title']}")
-                    
+
             elif i == current_stage:
                 # Current stage - show with animation
                 col1, col2 = st.columns([1, 20])
@@ -121,7 +122,7 @@ def render_live_progress_tracker(report_id: str, show_estimates: bool = True) ->
                         st.error("❌")
                     else:
                         st.info("⏳")
-                        
+
                 with col2:
                     if status == "running":
                         st.info(f"{stage['icon']} {stage['title']}...")
@@ -132,7 +133,7 @@ def render_live_progress_tracker(report_id: str, show_estimates: bool = True) ->
                         st.error(f"{stage['icon']} {stage['title']} - Error occurred")
                     else:
                         st.warning(f"{stage['icon']} {stage['title']} - Waiting...")
-                        
+
             else:
                 # Pending stage
                 col1, col2 = st.columns([1, 20])
@@ -140,7 +141,7 @@ def render_live_progress_tracker(report_id: str, show_estimates: bool = True) ->
                     st.write("⏸️")
                 with col2:
                     st.caption(f"{stage['icon']} {stage['title']}")
-    
+
     # Show overall progress bar
     if current_stage >= 0:
         progress_pct = min((current_stage + 1) / len(STAGES), 1.0)
@@ -149,10 +150,10 @@ def render_live_progress_tracker(report_id: str, show_estimates: bool = True) ->
 
 def render_minimal_progress(report_id: str) -> None:
     """Render a minimal progress indicator for tight spaces."""
-    
+
     progress_data = get_progress_state(report_id)
     current_stage = progress_data.get("current_stage", -1)
-    
+
     if current_stage >= 0 and current_stage < len(STAGES):
         stage = STAGES[current_stage]
         with st.spinner(f"{stage['icon']} {stage['title']}..."):
@@ -162,5 +163,6 @@ def render_minimal_progress(report_id: str) -> None:
 def cleanup_progress_state(report_id: str) -> None:
     """Clean up progress state after completion."""
     from contextlib import suppress
+
     with suppress(Exception):
         _ = report_id

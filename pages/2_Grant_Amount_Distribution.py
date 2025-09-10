@@ -1,19 +1,27 @@
-import os, sys
+import os
+import sys
+
 import streamlit as st
+
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-from utils.app_state import init_session_state, sidebar_controls, get_data, get_session_profile, is_newbie  # type: ignore
-from plots.grant_amount_distribution import grant_amount_distribution  # type: ignore
 from config import is_enabled  # type: ignore
+from plots.grant_amount_distribution import grant_amount_distribution  # type: ignore
+from utils.app_state import (  # type: ignore
+    get_data,
+    get_session_profile,
+    init_session_state,
+    is_newbie,
+    sidebar_controls,
+)
 from utils.help import render_page_help_panel  # type: ignore
 from utils.navigation import (  # type: ignore
-    push_breadcrumb,
-    get_recommended_next_page,
-    get_page_label,
-    get_breadcrumbs,
     compute_continue_state,
     continue_to,
+    get_breadcrumbs,
+    get_page_label,
+    get_recommended_next_page,
+    push_breadcrumb,
 )
-
 
 st.set_page_config(page_title="GrantScope — Distribution", page_icon=":chart_with_upwards_trend:")
 
@@ -35,7 +43,9 @@ if is_enabled("GS_ENABLE_NEWBIE_MODE") and is_newbie(profile):
 if err:
     st.error(f"Data load error: {err}")
 else:
-    grant_amount_distribution(df, grouped_df, "Grant Amount Distribution", selected_role, ai_enabled)
+    grant_amount_distribution(
+        df, grouped_df, "Grant Amount Distribution", selected_role, ai_enabled
+    )
 
 # Guided navigation UI (Newbie Mode only)
 try:

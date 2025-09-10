@@ -16,27 +16,29 @@ Compatibility:
 from __future__ import annotations
 
 # Re-export cache helpers
-from .cache import compute_data_signature, cache_key_for
+from .cache import cache_key_for, compute_data_signature
 
 # Re-export stage helpers and tools for test monkeypatch compatibility
 from .imports import (  # type: ignore
+    WHITELISTED_TOOLS,
+    _interpret_chart_cached,
     _stage0_intake_summary_cached,
     _stage1_normalize_cached,
     _stage2_plan_cached,
     _stage4_synthesize_cached,
     _stage5_recommend_cached,
-    _interpret_chart_cached,
     tool_query,
-    WHITELISTED_TOOLS,
 )
 
 
 def run_interview_pipeline(interview, df):
     """Compatibility wrapper that rebinds internals before delegating to the orchestrator."""
     # Local imports to avoid circular dependencies at module import time
-    from . import orchestrator as _orc  # type: ignore
-    from . import metrics as _metrics  # type: ignore
-    from . import figures_wrap as _figs  # type: ignore
+    from . import (
+        figures_wrap as _figs,  # type: ignore
+        metrics as _metrics,  # type: ignore
+        orchestrator as _orc,  # type: ignore
+    )
 
     # Rebind stage functions so monkeypatches applied to advisor.pipeline.* are respected
     try:
@@ -66,6 +68,7 @@ def run_interview_pipeline(interview, df):
 def _figures_default(df, interview, needs):
     """Compatibility wrapper around figures_wrap._figures_default honoring pipeline monkeypatches."""
     from . import figures_wrap as _figs  # type: ignore
+
     try:
         _figs._interpret_chart_cached = _interpret_chart_cached  # type: ignore[attr-defined]
     except Exception:

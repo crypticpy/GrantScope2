@@ -1,7 +1,7 @@
-import os
 import importlib
+import os
 import sys
-import types
+
 import pytest
 
 
@@ -69,7 +69,12 @@ def test_st_secrets_precedence_over_env(monkeypatch):
     cfg = _reload_config()
 
     # Simulate st.secrets containing a value
-    monkeypatch.setattr(cfg, "_secrets_getter", lambda k, d=None: "secret-openai" if k == "OPENAI_API_KEY" else None, raising=True)
+    monkeypatch.setattr(
+        cfg,
+        "_secrets_getter",
+        lambda k, d=None: "secret-openai" if k == "OPENAI_API_KEY" else None,
+        raising=True,
+    )
     cfg.refresh_cache()
 
     assert cfg.get_openai_api_key() == "secret-openai"
@@ -164,8 +169,11 @@ def test_require_returns_value(monkeypatch):
     monkeypatch.setattr(cfg, "_secrets_getter", lambda k, d=None: None, raising=True)
     cfg.refresh_cache()
 
-    assert cfg.require(
-        "CANDID_API_KEY",
-        cfg.get_candid_key,
-        "hint",
-    ) == "env-candid"
+    assert (
+        cfg.require(
+            "CANDID_API_KEY",
+            cfg.get_candid_key,
+            "hint",
+        )
+        == "env-candid"
+    )

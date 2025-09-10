@@ -1,9 +1,10 @@
 import os
-import json
+from dataclasses import asdict, dataclass
 from datetime import datetime
-from dataclasses import dataclass, asdict
-from typing import Dict, Literal, Optional
+from typing import Literal
+
 import streamlit as st
+
 from loaders.data_loader import load_data, preprocess_data
 from utils.utils import build_sample_grants_json, download_text
 
@@ -15,6 +16,7 @@ OrgType = Literal["nonprofit", "school", "business", "government", "other"]
 @dataclass
 class UserProfile:
     """User profile containing preferences, experience level, and onboarding state."""
+
     user_id: str
     experience_level: ExperienceLevel
     org_type: OrgType
@@ -24,14 +26,14 @@ class UserProfile:
     completed_onboarding: bool
     created_at: datetime
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         """Convert profile to dict for persistence."""
         result = asdict(self)
         result["created_at"] = self.created_at.isoformat()
         return result
 
     @classmethod
-    def from_dict(cls, data: Dict) -> "UserProfile":
+    def from_dict(cls, data: dict) -> "UserProfile":
         """Create profile from dict, handling datetime conversion."""
         data = data.copy()
         if "created_at" in data and isinstance(data["created_at"], str):
@@ -53,20 +55,20 @@ def role_label(experience_level: ExperienceLevel) -> str:
     """Convert experience level to user-facing label."""
     labels = {
         "new": "I'm new to grants",
-        "some": "I have some experience", 
-        "pro": "I'm a grant professional"
+        "some": "I have some experience",
+        "pro": "I'm a grant professional",
     }
     return labels[experience_level]
 
 
-def is_newbie(profile: Optional[UserProfile]) -> bool:
+def is_newbie(profile: UserProfile | None) -> bool:
     """Check if user profile indicates newbie status."""
     if profile is None:
         return True  # Default to newbie if no profile
     return profile.experience_level == "new"
 
 
-def get_session_profile() -> Optional[UserProfile]:
+def get_session_profile() -> UserProfile | None:
     """Get user profile from session state."""
     try:
         profile_data = st.session_state.get("user_profile")
@@ -126,13 +128,13 @@ def sidebar_controls():
         profile = get_session_profile()
         experience_level = profile.experience_level if profile else "new"
 
-        # Show profile summary when available (and feature flag enabled)
-        if config is not None and config.is_enabled("GS_ENABLE_NEWBIE_MODE") and profile:
+        # Show profile summary when available (no feature flag required)
+        if profile:
             try:
                 st.sidebar.markdown("**Experience:** " + role_label(experience_level))
             except Exception:
                 pass
-        
+
         # Base pages available to all users
         pages = {
             "Grant Advisor Interview": "0_Grant_Advisor_Interview.py",
@@ -145,28 +147,29 @@ def sidebar_controls():
             "General Analysis of Relationships": "7_General_Analysis_of_Relationships.py",
             "Top Categories by Unique Grant Count": "8_Top_Categories_Unique_Grants.py",
         }
-        
-        # Add newbie-friendly pages if enabled
-        if config is not None and config.is_enabled("GS_ENABLE_NEW_PAGES"):
-            new_pages = {
-                "Project Planner": "9_Project_Planner.py",
-                "Timeline Advisor": "10_Timeline_Advisor.py",
-                "Success Stories": "11_Success_Stories.py",
-                "Budget Reality Check": "12_Budget_Reality_Check.py",
-            }
-            
-            # Filter pages based on experience level
-            if experience_level == "new":
-                # Newbies get all the helpful tools
-                pages.update(new_pages)
-            elif experience_level == "some":
-                # Experienced users get planning tools
-                pages.update({
+
+        # Add newbie-friendly pages by default (no feature flag required)
+        new_pages = {
+            "Project Planner": "9_Project_Planner.py",
+            "Timeline Advisor": "10_Timeline_Advisor.py",
+            "Success Stories": "11_Success_Stories.py",
+            "Budget Reality Check": "12_Budget_Reality_Check.py",
+        }
+
+        # Filter pages based on experience level
+        if experience_level == "new":
+            # Newbies get all the helpful tools
+            pages.update(new_pages)
+        elif experience_level == "some":
+            # Experienced users get planning tools
+            pages.update(
+                {
                     "Project Planner": "9_Project_Planner.py",
                     "Timeline Advisor": "10_Timeline_Advisor.py",
                     "Budget Reality Check": "12_Budget_Reality_Check.py",
-                })
-            # Pros don't get the guided pages by default
+                }
+            )
+        # Pros don't get the guided pages by default
 
         # The explicit "Go to page" dropdown and single-page link were removed
         # in favor of a simpler Quick navigation section below, which is more
@@ -233,21 +236,12 @@ def sidebar_controls():
         )
 
     # Determine selected_role based on profile if Newbie Mode is enabled
-    if config is not None and config.is_enabled("GS_ENABLE_NEWBIE_MODE"):
-        prof = get_session_profile()
-        if prof is not None:
-            selected_role = _map_experience_to_role(prof.experience_level)
-        else:
-            # Fallback to legacy selector if no profile yet
-            user_roles = ["Grant Analyst/Writer", "Normal Grant User"]
-            selected_role = st.sidebar.selectbox(
-                "Select User Role",
-                options=user_roles,
-                index=user_roles.index(st.session_state.get("user_role", user_roles[0])),
-                key="user_role",
-            )
+    # Determine selected_role based on profile when available (no feature flag required)
+    prof = get_session_profile()
+    if prof is not None:
+        selected_role = _map_experience_to_role(prof.experience_level)
     else:
-        # Legacy role selector when Newbie Mode disabled
+        # Fallback to legacy selector if no profile yet
         user_roles = ["Grant Analyst/Writer", "Normal Grant User"]
         selected_role = st.sidebar.selectbox(
             "Select User Role",
@@ -260,21 +254,23 @@ def sidebar_controls():
     if config is not None and config.is_enabled("GS_ENABLE_PLAIN_HELPERS"):
         try:
             from utils.help import render_glossary_search
+
             render_glossary_search()
         except Exception:
             pass
-    
+
     # Add reset onboarding button for testing/user preference
-    if config is not None and config.is_enabled("GS_ENABLE_NEWBIE_MODE") and profile:
+    if profile:
         st.sidebar.markdown("---")
         if st.sidebar.button("🔄 Reset Setup", help="Start the setup process again"):
             try:
                 from utils.onboarding import OnboardingWizard
+
                 OnboardingWizard.reset_onboarding()
                 st.rerun()
             except Exception:
                 pass
-    
+
     # Flexible spacer to push the chat panel to the bottom of the sidebar viewport
     try:
         st.sidebar.markdown('<div class="gs-sidebar-spacer"></div>', unsafe_allow_html=True)
@@ -295,7 +291,7 @@ def get_data(uploaded_file):
         if uploaded_file is not None:
             df, grouped_df = _load_and_preprocess(None, uploaded_file)
         else:
-            df, grouped_df = _load_and_preprocess('data/sample.json', None)
+            df, grouped_df = _load_and_preprocess("data/sample.json", None)
         return df, grouped_df, None
     except (OSError, ValueError, KeyError) as e:
         return None, None, str(e)

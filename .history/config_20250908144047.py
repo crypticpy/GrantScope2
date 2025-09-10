@@ -26,8 +26,10 @@ except Exception:  # pragma: no cover - environment without streamlit
 try:
     from dotenv import load_dotenv
 except Exception:  # pragma: no cover - should be available via requirements, but keep safe
+
     def load_dotenv(*args: Any, **kwargs: Any) -> bool:
         return False
+
 
 # Read .env if present; do not override already-set variables
 load_dotenv(override=False)
@@ -164,14 +166,15 @@ def require_flag(flag_name: str, ui_msg: str = "Feature is disabled") -> bool:
     """
     if is_enabled(flag_name):
         return True
-    
+
     # Try to show message via Streamlit if available
     try:
         import streamlit as st  # type: ignore
+
         st.info(f"{ui_msg}. Set {flag_name}=1 to enable.")
     except Exception:
         pass
-    
+
     return False
 
 

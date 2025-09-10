@@ -2,6 +2,7 @@
 getcode.sh
 old/
 .idea/
+.history/
 
 # Python cache/bytecode
 __pycache__/

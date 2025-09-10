@@ -4,15 +4,16 @@ Pydantic data models for GrantScope Advisor pipeline.
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple, Literal
-
 import hashlib
 import json as _json
+from datetime import datetime
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
+
 try:
     from pydantic import ConfigDict  # type: ignore
+
     _P2 = True
 except ImportError:  # pydantic v1
     ConfigDict = None  # type: ignore
@@ -20,9 +21,10 @@ except ImportError:  # pydantic v1
 
 
 class _BaseModel(BaseModel):
-    if 'ConfigDict' in globals() and _P2:
+    if "ConfigDict" in globals() and _P2:
         model_config = ConfigDict(extra="ignore")  # type: ignore
     else:
+
         class Config:
             extra = "ignore"
 
@@ -37,18 +39,18 @@ def stable_hash_for_obj(obj: Any) -> str:
 
 class InterviewInput(_BaseModel):
     program_area: str = ""
-    populations: List[str] = Field(default_factory=list)
-    geography: List[str] = Field(default_factory=list)
-    timeframe_years: Optional[int] = None
-    budget_usd_range: Optional[Tuple[Optional[float], Optional[float]]] = None
-    outcomes: List[str] = Field(default_factory=list)
-    constraints: List[str] = Field(default_factory=list)
-    preferred_funder_types: List[str] = Field(default_factory=list)
-    keywords: List[str] = Field(default_factory=list)
+    populations: list[str] = Field(default_factory=list)
+    geography: list[str] = Field(default_factory=list)
+    timeframe_years: int | None = None
+    budget_usd_range: tuple[float | None, float | None] | None = None
+    outcomes: list[str] = Field(default_factory=list)
+    constraints: list[str] = Field(default_factory=list)
+    preferred_funder_types: list[str] = Field(default_factory=list)
+    keywords: list[str] = Field(default_factory=list)
     notes: str = ""
     user_role: str = "Grant Analyst/Writer"
 
-    def model_as_dict(self) -> Dict[str, Any]:
+    def model_as_dict(self) -> dict[str, Any]:
         try:
             return self.model_dump(mode="json")  # pydantic v2
         except AttributeError:
@@ -59,10 +61,10 @@ class InterviewInput(_BaseModel):
 
 
 class StructuredNeeds(_BaseModel):
-    subjects: List[str] = Field(default_factory=list)
-    populations: List[str] = Field(default_factory=list)
-    geographies: List[str] = Field(default_factory=list)
-    weights: Dict[str, float] = Field(default_factory=dict)
+    subjects: list[str] = Field(default_factory=list)
+    populations: list[str] = Field(default_factory=list)
+    geographies: list[str] = Field(default_factory=list)
+    weights: dict[str, float] = Field(default_factory=dict)
 
 
 class MetricRequest(_BaseModel):
@@ -80,21 +82,21 @@ class MetricRequest(_BaseModel):
         "df_sql_select",
         "get_chart_state",
     ]
-    params: Dict[str, Any] = Field(default_factory=dict)
+    params: dict[str, Any] = Field(default_factory=dict)
     title: str = ""
-    id: Optional[str] = None
+    id: str | None = None
 
 
 class AnalysisPlan(_BaseModel):
-    metric_requests: List[MetricRequest] = Field(default_factory=list)
-    narrative_outline: List[str] = Field(default_factory=list)
+    metric_requests: list[MetricRequest] = Field(default_factory=list)
+    narrative_outline: list[str] = Field(default_factory=list)
 
 
 class DataPoint(_BaseModel):
     id: str
     title: str
     method: str
-    params: Dict[str, Any] = Field(default_factory=dict)
+    params: dict[str, Any] = Field(default_factory=dict)
     table_md: str = ""
     notes: str = ""
 
@@ -103,12 +105,12 @@ class FunderCandidate(_BaseModel):
     name: str
     score: float = 0.0
     rationale: str = ""
-    grounded_dp_ids: List[str] = Field(default_factory=list)
+    grounded_dp_ids: list[str] = Field(default_factory=list)
 
 
 class TuningTip(_BaseModel):
     text: str
-    grounded_dp_ids: List[str] = Field(default_factory=list)
+    grounded_dp_ids: list[str] = Field(default_factory=list)
 
 
 class SearchQuery(_BaseModel):
@@ -117,53 +119,55 @@ class SearchQuery(_BaseModel):
 
 
 class Recommendations(_BaseModel):
-    funder_candidates: List[FunderCandidate] = Field(default_factory=list)
-    response_tuning: List[TuningTip] = Field(default_factory=list)
-    search_queries: List[SearchQuery] = Field(default_factory=list)
+    funder_candidates: list[FunderCandidate] = Field(default_factory=list)
+    response_tuning: list[TuningTip] = Field(default_factory=list)
+    search_queries: list[SearchQuery] = Field(default_factory=list)
 
 
 class Attachment(_BaseModel):
     kind: Literal["figure", "table", "text", "link", "datapoint_ref"] = "text"
-    ref_id: Optional[str] = None
-    content: Optional[str] = None
+    ref_id: str | None = None
+    content: str | None = None
 
 
 class ReportSection(_BaseModel):
     title: str
     markdown_body: str
-    attachments: List[Attachment] = Field(default_factory=list)
+    attachments: list[Attachment] = Field(default_factory=list)
 
 
 class ChartSummary(_BaseModel):
     """Lightweight, model-safe summary of a chart for LLM interpretation."""
+
     label: str = ""
-    highlights: List[str] = Field(default_factory=list)
-    stats: Dict[str, Any] = Field(default_factory=dict)
+    highlights: list[str] = Field(default_factory=list)
+    stats: dict[str, Any] = Field(default_factory=dict)
     notes: str = ""
+
 
 class FigureArtifact(_BaseModel):
     id: str
     label: str = ""
-    png_base64: Optional[str] = None
-    html: Optional[str] = None
+    png_base64: str | None = None
+    html: str | None = None
     # Optional structured summary of the chart content (grounding for LLM)
-    summary: Optional[ChartSummary] = None
+    summary: ChartSummary | None = None
     # Optional short interpretation (1–3 sentences), grounded in summary + interview profile
-    interpretation_text: Optional[str] = None
+    interpretation_text: str | None = None
 
 
 class ReportBundle(_BaseModel):
     interview: InterviewInput
     needs: StructuredNeeds
     plan: AnalysisPlan
-    datapoints: List[DataPoint] = Field(default_factory=list)
+    datapoints: list[DataPoint] = Field(default_factory=list)
     recommendations: Recommendations = Field(default_factory=Recommendations)
-    sections: List[ReportSection] = Field(default_factory=list)
-    figures: List[FigureArtifact] = Field(default_factory=list)
+    sections: list[ReportSection] = Field(default_factory=list)
+    figures: list[FigureArtifact] = Field(default_factory=list)
     created_at: str = Field(default_factory=lambda: datetime.utcnow().isoformat() + "Z")
     version: str = "1.0"
 
-    def index_by_id(self) -> Dict[str, DataPoint]:
+    def index_by_id(self) -> dict[str, DataPoint]:
         return {dp.id: dp for dp in self.datapoints}
 
     def to_json(self) -> str:
@@ -174,14 +178,17 @@ class ReportBundle(_BaseModel):
         return _json_dumps_stable(data)
 
     @classmethod
-    def from_json(cls, text: str) -> "ReportBundle":
+    def from_json(cls, text: str) -> ReportBundle:
         data = _json.loads(text)
         return cls(**data)
 
+
 # Ensure a single module identity for schemas regardless of import path
 from contextlib import suppress as _suppress  # type: ignore
+
 with _suppress(Exception):
     import sys as _sys  # type: ignore
+
     _mod = _sys.modules.get(__name__)
     if _mod is not None:
         _sys.modules.setdefault("advisor.schemas", _mod)

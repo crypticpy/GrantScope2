@@ -1,0 +1,50 @@
+[tool.black]
+line-length = 100
+target-version = ["py311"]
+extend-exclude = '''
+(
+  ^\.venv/
+| ^\.history/
+| ^\.ruru/
+| ^build/
+| ^dist/
+)
+'''
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+fix = true
+exclude = [
+  ".venv",
+  ".history",
+  ".ruru",
+  "build",
+  "dist",
+  ".git"
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B"]
+ignore = ["E501", "W291", "W293", "E402", "SIM105", "ARG001", "ARG002", "UP038", "F841", "B904", "B007", "B025"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["GrantScope", "loaders", "plots", "pages"]
+combine-as-imports = true
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.mypy]
+python_version = "3.11"
+warn_unused_configs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+no_implicit_optional = true
+check_untyped_defs = false
+ignore_missing_imports = true
+follow_imports = "skip"
+files = ["loaders/data_loader.py"]
+exclude = '(^\.venv/|^\.history/|^\.ruru/|^tests/|^advisor/|^pages/|^plots/|^fetch/|^utils/|^app\.py$|^config\.py$|^debug_test\.py$|^grant_newbie_ui\.py$|^onboarding_wizard_demo\.py$|^loaders/llama_index_setup\.py$)'

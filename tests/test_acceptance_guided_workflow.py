@@ -1,11 +1,10 @@
+import base64
+import importlib
 import sys
 from types import ModuleType
-import base64
-import pytest
-import importlib
-
 
 # ---------- Shared fakes ----------
+
 
 def _install_fake_streamlit(monkeypatch):
     """
@@ -14,17 +13,17 @@ def _install_fake_streamlit(monkeypatch):
     - markdown(): records calls for assertions
     """
     st_mod = ModuleType("streamlit")
-    setattr(st_mod, "session_state", {})
-    setattr(st_mod, "_md_calls", [])
+    st_mod.session_state = {}
+    st_mod._md_calls = []
 
     def _markdown(txt: str, **_kwargs):
         st_mod._md_calls.append(str(txt))
 
     # Provide minimal sidebar object to satisfy imports if needed
     sidebar = ModuleType("streamlit.sidebar")
-    setattr(st_mod, "sidebar", sidebar)
+    st_mod.sidebar = sidebar
 
-    setattr(st_mod, "markdown", _markdown)
+    st_mod.markdown = _markdown
     monkeypatch.setitem(sys.modules, "streamlit", st_mod)
     return st_mod
 
@@ -68,6 +67,7 @@ class DummyOpenAIClient:
 
 # ---------- Tests ----------
 
+
 class TestPlannerBudgetSummaries:
     def test_get_planner_summary_and_budget_summary_from_session(self, monkeypatch):
         # Arrange: fake streamlit
@@ -87,10 +87,10 @@ class TestPlannerBudgetSummaries:
         ss["budget_flags"] = ["Missing Evaluation", "High Staff %"]
 
         # Import after patch (reload to ensure our fake streamlit is used)
-        import importlib
         import utils.app_state as _app_state  # type: ignore
+
         importlib.reload(_app_state)
-        from utils.app_state import get_planner_summary, get_budget_summary  # type: ignore
+        from utils.app_state import get_budget_summary, get_planner_summary  # type: ignore
 
         # Act
         p = get_planner_summary(max_len=220) or ""
@@ -124,6 +124,7 @@ class TestPlannerBudgetSummaries:
         for key in planner_keys:
             del ss[key]
         from utils.app_state import get_planner_summary  # type: ignore
+
         assert get_planner_summary(max_len=220) is None
 
     def test_get_budget_summary_returns_none_when_no_fields(self, monkeypatch):
@@ -134,6 +135,7 @@ class TestPlannerBudgetSummaries:
         for key in budget_keys:
             del ss[key]
         from utils.app_state import get_budget_summary  # type: ignore
+
         assert get_budget_summary(max_len=220) is None
 
 
@@ -142,8 +144,8 @@ class TestDownloadHelpers:
         # Arrange: fake streamlit
         st_mod = _install_fake_streamlit(monkeypatch)
         # Reload utils to bind to our fake streamlit before import
-        import importlib
         import utils.utils as _utils_mod  # type: ignore
+
         importlib.reload(_utils_mod)
         from utils.utils import download_text  # type: ignore
 
@@ -155,7 +157,7 @@ class TestDownloadHelpers:
         assert href.startswith('<a href="data:text/markdown;base64,')
         assert 'download="workbook.md"' in href
         # Verify base64 payload decodes to our content
-        prefix = 'data:text/markdown;base64,'
+        prefix = "data:text/markdown;base64,"
         encoded = href.split(prefix, 1)[1].split('"', 1)[0]
         decoded = base64.b64decode(encoded).decode()
         assert decoded == content
@@ -239,4 +241,8 @@ class TestUserContextWedgeOnce:
         user_msg = msgs[1]
         content = user_msg["content"]
         assert content.count("User Context:") == 1
-        assert "Pre" in content and "Top years?" in content and "Additional Chart Context: Ctx" in content
+        assert (
+            "Pre" in content
+            and "Top years?" in content
+            and "Additional Chart Context: Ctx" in content
+        )

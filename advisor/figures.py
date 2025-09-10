@@ -7,7 +7,7 @@ into FigureArtifact with PNG/HTML for export as needed.
 
 from __future__ import annotations
 
-from typing import Any, Iterable
+from typing import Any
 
 # Use centralized normalization for consistent filtering between metrics and figures
 try:
@@ -29,11 +29,14 @@ except Exception:  # pragma: no cover
 try:
     import streamlit as st  # type: ignore
 except Exception:  # pragma: no cover
+
     class _NoStreamlit:  # type: ignore
         def cache_data(self, show_spinner: bool = False):
             def decorator(fn):
                 return fn
+
             return decorator
+
     st = _NoStreamlit()  # type: ignore
 
 # Apply a professional Plotly template and color palette globally (if Plotly is available)
@@ -42,6 +45,7 @@ try:
         px.defaults.template = "seaborn"
         # Use a qualitative palette with good print/export legibility
         from plotly.colors import qualitative as _qual  # type: ignore
+
         px.defaults.color_discrete_sequence = _qual.Set2
 except Exception:
     # Ignore palette errors; figures will fall back to Plotly defaults

@@ -1,15 +1,18 @@
 from __future__ import annotations
-from typing import Any, Dict, List, Optional, Tuple
+
+from typing import Any
+
 import pandas as pd
 
-from .imports import StructuredNeeds, DataPoint, FunderCandidate, _apply_needs_filters
 from .convert import _is_nan_like
+from .imports import DataPoint, FunderCandidate, StructuredNeeds, _apply_needs_filters
 
-def _derive_grounded_dp_ids(datapoints: List[DataPoint]) -> List[str]:
+
+def _derive_grounded_dp_ids(datapoints: list[DataPoint]) -> list[str]:
     """
     Heuristically collect DataPoint IDs that look like funder-level aggregates.
     """
-    out: List[str] = []
+    out: list[str] = []
     for dp in datapoints or []:
         try:
             method = str(getattr(dp, "method", ""))
@@ -21,7 +24,8 @@ def _derive_grounded_dp_ids(datapoints: List[DataPoint]) -> List[str]:
             continue
     return out[:3]
 
-def _coerce_funder_candidate(it: Any) -> Optional[FunderCandidate]:
+
+def _coerce_funder_candidate(it: Any) -> FunderCandidate | None:
     """
     Coerce various inputs into a valid FunderCandidate or return None to skip.
     """
@@ -69,7 +73,7 @@ def _coerce_funder_candidate(it: Any) -> Optional[FunderCandidate]:
                 rationale_val = ""
 
             g_raw = it.get("grounded_dp_ids", [])
-            grounded: List[str] = []
+            grounded: list[str] = []
             if isinstance(g_raw, (list, tuple)):
                 for g in g_raw:
                     try:
@@ -89,20 +93,21 @@ def _coerce_funder_candidate(it: Any) -> Optional[FunderCandidate]:
         return None
     return None
 
+
 def _fallback_funder_candidates(
     df: pd.DataFrame,
     needs: StructuredNeeds,
-    datapoints: List[DataPoint],
+    datapoints: list[DataPoint],
     min_n: int = 8,
-) -> List[FunderCandidate]:
+) -> list[FunderCandidate]:
     """
     Robust fallback with multi-tier strategy (Strict → Broad → Global) to ensure minimum candidates.
     """
-    candidates: List[FunderCandidate] = []
+    candidates: list[FunderCandidate] = []
     if df is None or df.empty:
         # Return empty list for completely invalid dataframes
         return []
-    
+
     if "funder_name" not in df.columns:
         # Return empty list when no funder column exists
         return []
@@ -110,40 +115,40 @@ def _fallback_funder_candidates(
     # Tier 1: Strict filtering based on needs
     strict_candidates = _generate_funder_candidates(df, needs, datapoints, tier="strict")
     candidates.extend(strict_candidates)
-    
+
     # If we have enough candidates, return them (up to min_n*2)
     if len(candidates) >= min_n:
-        return sorted(candidates, key=lambda x: x.score, reverse=True)[:min_n*2]
-    
+        return sorted(candidates, key=lambda x: x.score, reverse=True)[: min_n * 2]
+
     # Tier 2: Broad filtering (relaxed filters)
     broad_candidates = _generate_funder_candidates(df, needs, datapoints, tier="broad")
     existing_names = {c.name for c in candidates}
     for cand in broad_candidates:
-        if cand.name not in existing_names and len(candidates) < min_n*2:
+        if cand.name not in existing_names and len(candidates) < min_n * 2:
             candidates.append(cand)
             existing_names.add(cand.name)
-    
+
     # If we have enough candidates, return them
     if len(candidates) >= min_n:
-        return sorted(candidates, key=lambda x: x.score, reverse=True)[:min_n*2]
-    
+        return sorted(candidates, key=lambda x: x.score, reverse=True)[: min_n * 2]
+
     # Track whether planned tiers yielded anything
     had_planned = bool(strict_candidates) or bool(broad_candidates)
 
     # Tier 3: Global search (no filters)
     global_candidates = _global_funder_search(df, datapoints, min_n)
     for cand in global_candidates:
-        if cand.name not in existing_names and len(candidates) < min_n*2:
+        if cand.name not in existing_names and len(candidates) < min_n * 2:
             candidates.append(cand)
             existing_names.add(cand.name)
-    
+
     # Tier 4: Strict retry (different path) to satisfy multi-tier fallback expectations
     retry_candidates = _generate_funder_candidates(df, needs, datapoints, tier="strict")
     for cand in retry_candidates:
-        if cand.name not in existing_names and len(candidates) < min_n*2:
+        if cand.name not in existing_names and len(candidates) < min_n * 2:
             candidates.append(cand)
             existing_names.add(cand.name)
-    
+
     # Ensure we have at least min_n candidates by pulling additional global names
     if len(candidates) < min_n:
         # Fill with global top funders if needed
@@ -152,7 +157,7 @@ def _fallback_funder_candidates(
             if cand.name not in existing_names and len(candidates) < min_n:
                 candidates.append(cand)
                 existing_names.add(cand.name)
-    
+
     # Final guarantee: synthesize name variants to reach min_n when appropriate.
     # Allow synthesis when no planned-tier results exist OR when needs specify any filters.
     if len(candidates) < min_n:
@@ -160,7 +165,11 @@ def _fallback_funder_candidates(
         if had_planned:
             # Suppress synthesis only when no filters are specified in needs (purely generic case).
             try:
-                if not (getattr(needs, "subjects", []) or getattr(needs, "populations", []) or getattr(needs, "geographies", [])):
+                if not (
+                    getattr(needs, "subjects", [])
+                    or getattr(needs, "populations", [])
+                    or getattr(needs, "geographies", [])
+                ):
                     allow_synthesis = False
             except Exception:
                 allow_synthesis = False
@@ -171,32 +180,53 @@ def _fallback_funder_candidates(
                 try:
                     if not df.empty and "funder_name" in df.columns:
                         unique_funders = df["funder_name"].astype(str).str.strip()
-                        unique_funders = unique_funders[unique_funders.ne("") & ~unique_funders.str.lower().isin(["nan", "none", "null"])].unique()[:5]
+                        unique_funders = unique_funders[
+                            unique_funders.ne("")
+                            & ~unique_funders.str.lower().isin(["nan", "none", "null"])
+                        ].unique()[:5]
                         for i, funder in enumerate(unique_funders):
-                            base_pool.append(FunderCandidate(
-                                name=str(funder).strip(),
-                                score=round(0.5 - i * 0.1, 4),
-                                rationale="Emergency fallback from data analysis",
-                            ))
+                            base_pool.append(
+                                FunderCandidate(
+                                    name=str(funder).strip(),
+                                    score=round(0.5 - i * 0.1, 4),
+                                    rationale="Emergency fallback from data analysis",
+                                )
+                            )
                     else:
                         # Ultimate fallback: generic foundation names
-                        generic_names = ["Generic Foundation", "Sample Foundation", "Example Trust", "Default Funder", "Fallback Foundation"]
+                        generic_names = [
+                            "Generic Foundation",
+                            "Sample Foundation",
+                            "Example Trust",
+                            "Default Funder",
+                            "Fallback Foundation",
+                        ]
                         for i, name in enumerate(generic_names):
-                            base_pool.append(FunderCandidate(
+                            base_pool.append(
+                                FunderCandidate(
+                                    name=name,
+                                    score=round(0.3 - i * 0.05, 4),
+                                    rationale="Generic fallback candidate from analysis template",
+                                )
+                            )
+                except Exception:
+                    # Last resort fallback
+                    generic_names = [
+                        "Generic Foundation",
+                        "Sample Foundation",
+                        "Example Trust",
+                        "Default Funder",
+                        "Fallback Foundation",
+                    ]
+                    for i, name in enumerate(generic_names):
+                        base_pool.append(
+                            FunderCandidate(
                                 name=name,
                                 score=round(0.3 - i * 0.05, 4),
                                 rationale="Generic fallback candidate from analysis template",
-                            ))
-                except Exception:
-                    # Last resort fallback
-                    generic_names = ["Generic Foundation", "Sample Foundation", "Example Trust", "Default Funder", "Fallback Foundation"]
-                    for i, name in enumerate(generic_names):
-                        base_pool.append(FunderCandidate(
-                            name=name,
-                            score=round(0.3 - i * 0.05, 4),
-                            rationale="Generic fallback candidate from analysis template",
-                        ))
-            
+                            )
+                        )
+
             suffixes = [" II", " Jr.", " Partners", " Initiative", " Trust"]
             i = 0
             while len(candidates) < min_n and base_pool:
@@ -206,35 +236,38 @@ def _fallback_funder_candidates(
                 if variant_name in existing_names:
                     variant_name = f"{src.name} ({i + 2})"
                 variant_score = round(max(0.01, float(getattr(src, "score", 0.01)) * 0.95), 4)
-                variant_rationale = (str(getattr(src, "rationale", "")) + "; additional analysis using data-driven signals").strip()
-                candidates.append(FunderCandidate(
-                    name=variant_name,
-                    score=variant_score,
-                    rationale=variant_rationale,
-                    grounded_dp_ids=list(getattr(src, "grounded_dp_ids", []) or []),
-                ))
+                variant_rationale = (
+                    str(getattr(src, "rationale", ""))
+                    + "; additional analysis using data-driven signals"
+                ).strip()
+                candidates.append(
+                    FunderCandidate(
+                        name=variant_name,
+                        score=variant_score,
+                        rationale=variant_rationale,
+                        grounded_dp_ids=list(getattr(src, "grounded_dp_ids", []) or []),
+                    )
+                )
                 existing_names.add(variant_name)
                 i += 1
-    
-    return sorted(candidates, key=lambda x: x.score, reverse=True)[:min_n*2]
+
+    return sorted(candidates, key=lambda x: x.score, reverse=True)[: min_n * 2]
+
 
 def _generate_funder_candidates(
-    df: pd.DataFrame,
-    needs: StructuredNeeds,
-    datapoints: List[DataPoint],
-    tier: str = "strict"
-) -> List[FunderCandidate]:
+    df: pd.DataFrame, needs: StructuredNeeds, datapoints: list[DataPoint], tier: str = "strict"
+) -> list[FunderCandidate]:
     """
     Generate funder candidates with different filtering tiers.
     """
-    candidates: List[FunderCandidate] = []
+    candidates: list[FunderCandidate] = []
     if df is None or df.empty or "funder_name" not in df.columns:
         return candidates
 
     # Apply filters based on tier
     filtered_df = df.copy()
     used = {}
-    
+
     if tier == "strict":
         # Apply full filtering
         filtered_df, used = _apply_needs_filters(df, needs)
@@ -243,19 +276,21 @@ def _generate_funder_candidates(
         strong_subjects = getattr(needs, "subjects", [])[:2]  # Only top 2 subjects
         strong_populations = getattr(needs, "populations", [])[:1]  # Only top population
         strong_geographies = getattr(needs, "geographies", [])[:1]  # Only top geography
-        
+
         # Create relaxed needs
         relaxed_needs = StructuredNeeds(
-            subjects=strong_subjects,
-            populations=strong_populations,
-            geographies=strong_geographies
+            subjects=strong_subjects, populations=strong_populations, geographies=strong_geographies
         )
         filtered_df, used = _apply_needs_filters(df, relaxed_needs)
 
     # Validate funder names
     try:
         fn_str = filtered_df["funder_name"].astype(str).str.strip()
-        mask_valid_fn = filtered_df["funder_name"].notna() & fn_str.ne("") & ~fn_str.str.lower().isin(["nan", "none", "null"])
+        mask_valid_fn = (
+            filtered_df["funder_name"].notna()
+            & fn_str.ne("")
+            & ~fn_str.str.lower().isin(["nan", "none", "null"])
+        )
         filtered_df = filtered_df[mask_valid_fn]
     except Exception:
         try:
@@ -268,41 +303,65 @@ def _generate_funder_candidates(
         try:
             # Try to find any non-null, non-empty funder names from original df
             fn_orig = df["funder_name"].astype(str).str.strip()
-            mask_any_valid = df["funder_name"].notna() & fn_orig.ne("") & ~fn_orig.str.lower().isin(["nan", "none", "null", ""])
+            mask_any_valid = (
+                df["funder_name"].notna()
+                & fn_orig.ne("")
+                & ~fn_orig.str.lower().isin(["nan", "none", "null", ""])
+            )
             if mask_any_valid.any():
                 # Use first few valid entries as emergency candidates
                 valid_funders = df[mask_any_valid]["funder_name"].unique()[:5]
                 for i, funder in enumerate(valid_funders):
-                    candidates.append(FunderCandidate(
-                        name=str(funder).strip(),
-                        score=round(0.4 - i * 0.05, 4),
-                        rationale=f"Emergency tier fallback from data analysis ({tier} filters)",
-                        grounded_dp_ids=[]
-                    ))
+                    candidates.append(
+                        FunderCandidate(
+                            name=str(funder).strip(),
+                            score=round(0.4 - i * 0.05, 4),
+                            rationale=f"Emergency tier fallback from data analysis ({tier} filters)",
+                            grounded_dp_ids=[],
+                        )
+                    )
                 return candidates
             else:
                 # No valid funder names at all - create synthetic candidates for this tier
-                if tier == "strict":  # Only generate synthetic ones in strict tier to avoid duplicates
-                    synthetic_names = ["Research Foundation", "Education Trust", "Community Foundation", "Innovation Fund", "Development Institute"]
+                if (
+                    tier == "strict"
+                ):  # Only generate synthetic ones in strict tier to avoid duplicates
+                    synthetic_names = [
+                        "Research Foundation",
+                        "Education Trust",
+                        "Community Foundation",
+                        "Innovation Fund",
+                        "Development Institute",
+                    ]
                     for i, name in enumerate(synthetic_names):
-                        candidates.append(FunderCandidate(
-                            name=name,
-                            score=round(0.3 - i * 0.04, 4),
-                            rationale=f"Synthetic {tier} tier candidate (no valid funders found in data)",
-                            grounded_dp_ids=[]
-                        ))
+                        candidates.append(
+                            FunderCandidate(
+                                name=name,
+                                score=round(0.3 - i * 0.04, 4),
+                                rationale=f"Synthetic {tier} tier candidate (no valid funders found in data)",
+                                grounded_dp_ids=[],
+                            )
+                        )
                     return candidates
         except Exception:
             # Final fallback if everything fails
             if tier == "strict":
-                synthetic_names = ["Research Foundation", "Education Trust", "Community Foundation", "Innovation Fund", "Development Institute"]
+                synthetic_names = [
+                    "Research Foundation",
+                    "Education Trust",
+                    "Community Foundation",
+                    "Innovation Fund",
+                    "Development Institute",
+                ]
                 for i, name in enumerate(synthetic_names):
-                    candidates.append(FunderCandidate(
-                        name=name,
-                        score=round(0.3 - i * 0.04, 4),
-                        rationale=f"Exception fallback {tier} tier candidate",
-                        grounded_dp_ids=[]
-                    ))
+                    candidates.append(
+                        FunderCandidate(
+                            name=name,
+                            score=round(0.3 - i * 0.04, 4),
+                            rationale=f"Exception fallback {tier} tier candidate",
+                            grounded_dp_ids=[],
+                        )
+                    )
                 return candidates
 
     if filtered_df.empty:
@@ -313,10 +372,8 @@ def _generate_funder_candidates(
         if use_amount:
             series = pd.to_numeric(filtered_df["amount_usd"], errors="coerce").fillna(0.0)
             grouped = filtered_df.assign(_val=series).groupby("funder_name")["_val"].sum()
-            basis = "total amount"
         else:
             grouped = filtered_df.groupby("funder_name").size().rename("count")
-            basis = "grant count"
 
         grouped = grouped.sort_values(ascending=False)
         if grouped.empty:
@@ -329,39 +386,43 @@ def _generate_funder_candidates(
             max_val = 1.0
 
         grounded_ids = _derive_grounded_dp_ids(datapoints)
-        rationale_parts: List[str] = []
+        rationale_parts: list[str] = []
         if used.get("filters_applied"):
             if "subjects" in used and used["subjects"]:
                 rationale_parts.append(f"subjects: {', '.join(map(str, used['subjects'][:3]))}")
             if "populations" in used and used["populations"]:
-                rationale_parts.append(f"populations: {', '.join(map(str, used['populations'][:3]))}")
+                rationale_parts.append(
+                    f"populations: {', '.join(map(str, used['populations'][:3]))}"
+                )
             if "geographies" in used and used["geographies"]:
-                rationale_parts.append(f"geographies: {', '.join(map(str, used['geographies'][:3]))}")
+                rationale_parts.append(
+                    f"geographies: {', '.join(map(str, used['geographies'][:3]))}"
+                )
 
         # Create diverse rationale templates
         rationale_templates = [
             "Major funder with ${:,.0f} in {} funding, ranking {} out of {} analyzed funders",
-            "Significant funder with ${:,.0f} awarded through {} grants, demonstrating strong commitment", 
+            "Significant funder with ${:,.0f} awarded through {} grants, demonstrating strong commitment",
             "Key funder in funding landscape with ${:,.0f} total investment across {} initiatives",
             "Strategic funder with ${:,.0f} in documented support for {} programs",
-            "Established funder with ${:,.0f} distributed via {} awards, showing consistent engagement"
+            "Established funder with ${:,.0f} distributed via {} awards, showing consistent engagement",
         ]
-        
+
         count_templates = [
             "Active funder with {} grants awarded, ranking {} among {} analyzed funders based on count",
             "Consistent funder with {} documented awards, demonstrating ongoing commitment by count",
-            "Regular funder with {} funded projects, showing sustained engagement by count", 
+            "Regular funder with {} funded projects, showing sustained engagement by count",
             "Reliable funder with {} grants distributed across target areas by count",
-            "Engaged funder with {} awards documented, indicating strategic interest by count"
+            "Engaged funder with {} awards documented, indicating strategic interest by count",
         ]
-        
+
         for i, (funder_name, val) in enumerate(top.items()):
             name_str = str(funder_name).strip() if funder_name is not None else ""
             if not name_str or name_str.lower() in ("nan", "none", "null"):
                 continue
             raw_score = float(val) / max_val if max_val > 0 else 0.0
             score = max(0.01, raw_score)
-            
+
             # Select template based on position to ensure variety
             if use_amount:
                 template = rationale_templates[i % len(rationale_templates)]
@@ -370,32 +431,36 @@ def _generate_funder_candidates(
                     focus_area = ", ".join(rationale_parts[:2])
                 else:
                     focus_area = "analyzed programs"
-                
+
                 # Different format based on ranking
                 if i < 3:  # Top 3 get ranking info
-                    rationale = template.format(amount_formatted, focus_area, i+1, len(top))
+                    rationale = template.format(amount_formatted, focus_area, i + 1, len(top))
                 else:  # Others get simplified format
                     rationale = template.format(amount_formatted, focus_area)
-                    rationale = rationale.replace(", ranking {} out of {} analyzed funders", "")  # Remove ranking part
+                    rationale = rationale.replace(
+                        ", ranking {} out of {} analyzed funders", ""
+                    )  # Remove ranking part
             else:
                 template = count_templates[i % len(count_templates)]
                 if i < 3:  # Top 3 get ranking info
-                    rationale = template.format(int(val), i+1, len(top))
+                    rationale = template.format(int(val), i + 1, len(top))
                 else:  # Others get simplified format
                     rationale = template.format(int(val))
-                    rationale = rationale.replace(", ranking {} among {} analyzed funders", "")  # Remove ranking part
-            
+                    rationale = rationale.replace(
+                        ", ranking {} among {} analyzed funders", ""
+                    )  # Remove ranking part
+
             # Add context about filtering if available
             if used.get("filters_applied") and rationale_parts:
                 focus_context = f" Focus areas: {', '.join(rationale_parts[:2])}"
                 rationale += f".{focus_context}"
-            
+
             # Add tier-specific information if meaningful
             if tier == "broad":
                 rationale += " (expanded search criteria)"
             elif tier == "strict":
                 rationale += " (targeted analysis)"
-                
+
             candidates.append(
                 FunderCandidate(
                     name=name_str,
@@ -411,15 +476,16 @@ def _generate_funder_candidates(
         pass
     return candidates
 
+
 def _global_funder_search(
     df: pd.DataFrame,
-    datapoints: List[DataPoint],
+    datapoints: list[DataPoint],
     min_n: int = 8,
-) -> List[FunderCandidate]:
+) -> list[FunderCandidate]:
     """
     Global search for top funders without any filtering.
     """
-    candidates: List[FunderCandidate] = []
+    candidates: list[FunderCandidate] = []
     if df is None or df.empty or "funder_name" not in df.columns:
         return candidates
 
@@ -428,16 +494,31 @@ def _global_funder_search(
             series_all = pd.to_numeric(df["amount_usd"], errors="coerce").fillna(0.0)
             df_all = df.assign(_val=series_all)
             fn_all = df_all["funder_name"].astype(str).str.strip()
-            mask_valid_all = df_all["funder_name"].notna() & fn_all.ne("") & ~fn_all.str.lower().isin(["nan", "none", "null"])
+            mask_valid_all = (
+                df_all["funder_name"].notna()
+                & fn_all.ne("")
+                & ~fn_all.str.lower().isin(["nan", "none", "null"])
+            )
             df_all_valid = df_all[mask_valid_all]
-            grouped_all = df_all_valid.groupby("funder_name")["_val"].sum().sort_values(ascending=False)
+            grouped_all = (
+                df_all_valid.groupby("funder_name")["_val"].sum().sort_values(ascending=False)
+            )
             basis_all = "total amount"
         else:
             df_all = df.copy()
             fn_all = df_all["funder_name"].astype(str).str.strip()
-            mask_valid_all = df_all["funder_name"].notna() & fn_all.ne("") & ~fn_all.str.lower().isin(["nan", "none", "null"])
+            mask_valid_all = (
+                df_all["funder_name"].notna()
+                & fn_all.ne("")
+                & ~fn_all.str.lower().isin(["nan", "none", "null"])
+            )
             df_all_valid = df_all[mask_valid_all]
-            grouped_all = df_all_valid.groupby("funder_name").size().rename("count").sort_values(ascending=False)
+            grouped_all = (
+                df_all_valid.groupby("funder_name")
+                .size()
+                .rename("count")
+                .sort_values(ascending=False)
+            )
             basis_all = "grant count"
 
         head_all = grouped_all.head(max(min_n * 2, 10))
@@ -448,27 +529,27 @@ def _global_funder_search(
         # Diverse global search rationales
         global_templates = [
             "Leading funder in dataset with ${:,.0f} total funding across all programs from analysis",
-            "Major funder with ${:,.0f} in comprehensive institutional grant making based on data", 
+            "Major funder with ${:,.0f} in comprehensive institutional grant making based on data",
             "Prominent foundation with ${:,.0f} documented in broad funding portfolio from grants analysis",
             "Significant funder with ${:,.0f} distributed across diverse foundation initiatives in data",
-            "Established grant-making foundation with ${:,.0f} total investment in analyzed programs"
+            "Established grant-making foundation with ${:,.0f} total investment in analyzed programs",
         ]
-        
+
         global_count_templates = [
             "Most active funder with {} total grants across all program areas based on data count analysis",
             "Highly engaged foundation with {} documented awards in comprehensive data analysis by count",
-            "Prolific grant-making foundation with {} funded projects across diverse sectors in grants data by count", 
+            "Prolific grant-making foundation with {} funded projects across diverse sectors in grants data by count",
             "Consistent institutional funder with {} total grants in dataset analysis by count",
-            "Active foundation with {} awards spanning multiple focus areas from data by count"
+            "Active foundation with {} awards spanning multiple focus areas from data by count",
         ]
-        
+
         for i, (funder_name, val) in enumerate(head_all.items()):
             name_str_all = str(funder_name).strip() if funder_name is not None else ""
             if not name_str_all or name_str_all.lower() in ("nan", "none", "null"):
                 continue
             raw_score = float(val) / max_val_all if max_val_all > 0 else 0.0
             score = max(0.01, raw_score)
-            
+
             # Use different templates for variety
             if "amount" in basis_all:
                 template = global_templates[i % len(global_templates)]
@@ -476,7 +557,7 @@ def _global_funder_search(
             else:
                 template = global_count_templates[i % len(global_count_templates)]
                 rationale_extra = template.format(int(val))
-            
+
             candidates.append(
                 FunderCandidate(
                     name=name_str_all,

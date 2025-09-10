@@ -2,9 +2,8 @@
 AI Explainer utility for charts and pages.
 Renders a short, audience-appropriate explainer when an API key is present.
 """
-from __future__ import annotations
 
-from typing import Optional
+from __future__ import annotations
 
 import streamlit as st
 
@@ -29,6 +28,7 @@ def _audience_preface() -> str:
     """Return a tone/style instruction based on session profile."""
     try:
         from utils.app_state import get_session_profile  # deferred import to avoid cycles
+
         prof = get_session_profile()
         if prof and getattr(prof, "experience_level", "new") == "new":
             return (
@@ -44,10 +44,10 @@ def render_ai_explainer(
     df,
     pre_prompt: str,
     *,
-    chart_id: Optional[str] = None,
+    chart_id: str | None = None,
     sample_df=None,
-    extra_ctx: Optional[str] = None,
-    ai_enabled: Optional[bool] = None,
+    extra_ctx: str | None = None,
+    ai_enabled: bool | None = None,
     title: str = "🤖 AI Explainer",
 ) -> None:
     """
@@ -92,4 +92,3 @@ def render_ai_explainer(
         if chart_id:
             st.caption(f"Context: {chart_id}")
         st.markdown(content)
-

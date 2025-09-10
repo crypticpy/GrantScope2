@@ -1,29 +1,34 @@
 import hashlib
 from io import BytesIO
+from typing import Any, cast
+
 import matplotlib.pyplot as plt
 import numpy as np
 import streamlit as st
-from typing import Any, cast
+
 from config import is_enabled
+
 try:  # optional dependency; available via transitive deps but handle gracefully
     from sklearn.feature_extraction.text import TfidfVectorizer  # type: ignore
+
     TFIDF_AVAILABLE = True
 except ImportError:  # pragma: no cover - optional dependency
     TfidfVectorizer = None  # type: ignore
     TFIDF_AVAILABLE = False
 
 try:
-    from wordcloud import WordCloud, STOPWORDS  # type: ignore
+    from wordcloud import STOPWORDS, WordCloud  # type: ignore
+
     WORDCLOUD_AVAILABLE = True
 except ImportError:  # pragma: no cover - optional dependency
     WordCloud = None  # type: ignore
     STOPWORDS = set()  # type: ignore
     WORDCLOUD_AVAILABLE = False
 
-from utils.utils import download_excel, generate_page_prompt
-from utils.chat_panel import chat_panel
-from utils.app_state import set_selected_chart
 from utils.ai_explainer import render_ai_explainer
+from utils.app_state import set_selected_chart
+from utils.chat_panel import chat_panel
+from utils.utils import download_excel
 
 
 def grant_description_word_clouds(df, grouped_df, selected_chart, selected_role, ai_enabled):
@@ -35,7 +40,8 @@ def grant_description_word_clouds(df, grouped_df, selected_chart, selected_role,
 
     audience = "pro" if selected_role == "Grant Analyst/Writer" else "new"
     if is_enabled("GS_ENABLE_PLAIN_HELPERS") and audience == "new":
-        st.info("""
+        st.info(
+            """
         What this page shows:
         - Common words in your grant descriptions
 
@@ -45,7 +51,8 @@ def grant_description_word_clouds(df, grouped_df, selected_chart, selected_role,
         What to do next:
         - Remove buzzwords from your descriptions
         - Keep strong, specific words that match funder interests
-        """)
+        """
+        )
 
     st.write(
         """
@@ -58,7 +65,9 @@ def grant_description_word_clouds(df, grouped_df, selected_chart, selected_role,
     )
 
     if not WORDCLOUD_AVAILABLE:
-        st.info("WordCloud package is not installed. Please install 'wordcloud' to enable this page.")
+        st.info(
+            "WordCloud package is not installed. Please install 'wordcloud' to enable this page."
+        )
         return
 
     # Ensure required columns exist and are clean
@@ -71,10 +80,50 @@ def grant_description_word_clouds(df, grouped_df, selected_chart, selected_role,
     stopwords = set(STOPWORDS)
     # Case-insensitive deduped stopwords common in descriptions
     additional_stopwords = {
-        'public', 'health', 'and', 'to', 'of', 'the', 'a', 'by', 'in', 'for', 'with', 'on', 'is', 'that', 'are',
-        'as', 'be', 'this', 'will', 'generally', 'from', 'or', 'an', 'which', 'have', 'it', 'general', 'can',
-        'more', 'has', 'their', 'not', 'who', 'we', 'support', 'project', 'grant', 'funding', 'funded', 'funds',
-        'fund', 'funder', 'recipient', 'area'
+        "public",
+        "health",
+        "and",
+        "to",
+        "of",
+        "the",
+        "a",
+        "by",
+        "in",
+        "for",
+        "with",
+        "on",
+        "is",
+        "that",
+        "are",
+        "as",
+        "be",
+        "this",
+        "will",
+        "generally",
+        "from",
+        "or",
+        "an",
+        "which",
+        "have",
+        "it",
+        "general",
+        "can",
+        "more",
+        "has",
+        "their",
+        "not",
+        "who",
+        "we",
+        "support",
+        "project",
+        "grant",
+        "funding",
+        "funded",
+        "funds",
+        "fund",
+        "funder",
+        "recipient",
+        "area",
     }
     stopwords.update({w.lower() for w in additional_stopwords})
 
@@ -83,15 +132,27 @@ def grant_description_word_clouds(df, grouped_df, selected_chart, selected_role,
         with col_a:
             max_words = st.slider("Max words", min_value=50, max_value=1000, value=250, step=50)
             collocations = st.toggle("Show collocations (bigrams)", value=False)
-            use_tfidf = st.toggle("Use TF-IDF weighting", value=False, disabled=not TFIDF_AVAILABLE,
-                                   help=None if TFIDF_AVAILABLE else "scikit-learn not installed")
+            use_tfidf = st.toggle(
+                "Use TF-IDF weighting",
+                value=False,
+                disabled=not TFIDF_AVAILABLE,
+                help=None if TFIDF_AVAILABLE else "scikit-learn not installed",
+            )
         with col_b:
             background_color = st.selectbox("Background", ["white", "black"], index=0)
             colormap = st.selectbox(
                 "Colormap",
                 [
-                    "viridis", "plasma", "inferno", "magma", "cividis",
-                    "Blues", "Greens", "Oranges", "Reds", "Purples",
+                    "viridis",
+                    "plasma",
+                    "inferno",
+                    "magma",
+                    "cividis",
+                    "Blues",
+                    "Greens",
+                    "Oranges",
+                    "Reds",
+                    "Purples",
                 ],
                 index=0,
             )
@@ -108,10 +169,30 @@ def grant_description_word_clouds(df, grouped_df, selected_chart, selected_role,
     word_regex = rf"[A-Za-z]{{{min_word_len},}}"
 
     @st.cache_data(show_spinner=False)
-    def _cloud_png_bytes(text: str, width: int, height: int, max_words: int, background_color: str, colormap: str, collocations: bool, regex: str, stopwords_list: list[str]) -> bytes:
+    def _cloud_png_bytes(
+        text: str,
+        width: int,
+        height: int,
+        max_words: int,
+        background_color: str,
+        colormap: str,
+        collocations: bool,
+        regex: str,
+        stopwords_list: list[str],
+    ) -> bytes:
         # Build a stable key by hashing inputs (cache_data handles args, but content hashing makes it explicit)
         _ = hashlib.md5(
-            (text + str(width) + str(height) + str(max_words) + background_color + colormap + str(collocations) + regex + ",".join(sorted(stopwords_list))).encode("utf-8")
+            (
+                text
+                + str(width)
+                + str(height)
+                + str(max_words)
+                + background_color
+                + colormap
+                + str(collocations)
+                + regex
+                + ",".join(sorted(stopwords_list))
+            ).encode("utf-8")
         ).hexdigest()
 
         wc = WordCloud(
@@ -123,7 +204,9 @@ def grant_description_word_clouds(df, grouped_df, selected_chart, selected_role,
             colormap=colormap,
             collocations=collocations,
             regexp=regex,
-        ).generate(text)  # type: ignore
+        ).generate(
+            text
+        )  # type: ignore
 
         fig, ax = plt.subplots(figsize=(width / 100, height / 100), dpi=100)
         ax.imshow(wc, interpolation="bilinear")
@@ -135,13 +218,17 @@ def grant_description_word_clouds(df, grouped_df, selected_chart, selected_role,
         return buf.read()
 
     @st.cache_data(show_spinner=False)
-    def _cloud_png_bytes_from_freq(freq: dict[str, float], width: int, height: int, background_color: str, colormap: str) -> bytes:
+    def _cloud_png_bytes_from_freq(
+        freq: dict[str, float], width: int, height: int, background_color: str, colormap: str
+    ) -> bytes:
         wc = WordCloud(
             width=width,
             height=height,
             background_color=background_color,
             colormap=colormap,
-        ).generate_from_frequencies(freq)  # type: ignore
+        ).generate_from_frequencies(
+            freq
+        )  # type: ignore
         fig, ax = plt.subplots(figsize=(width / 100, height / 100), dpi=100)
         ax.imshow(wc, interpolation="bilinear")
         ax.axis("off")
@@ -161,7 +248,7 @@ def grant_description_word_clouds(df, grouped_df, selected_chart, selected_role,
             # Sum TF-IDF scores across documents (cast to silence stubs on sparse types)
             sums = np.asarray(cast(Any, X).sum(axis=0)).ravel()
             terms = np.array(vec.get_feature_names_out())
-            freq = {t: float(s) for t, s in zip(terms, sums) if s > 0}
+            freq = {t: float(s) for t, s in zip(terms, sums, strict=False) if s > 0}
             # Normalize for display stability
             if freq:
                 maxv = max(freq.values())
@@ -182,17 +269,25 @@ def grant_description_word_clouds(df, grouped_df, selected_chart, selected_role,
         "Geographical Area",
         "Description",
     ]
-    selected_basis = st.selectbox("Select the basis for generating word clouds:", options=cloud_basis_options)
+    selected_basis = st.selectbox(
+        "Select the basis for generating word clouds:", options=cloud_basis_options
+    )
 
     if selected_basis == "Entire Dataset":
         freqs: dict[str, float] = {}
         if use_tfidf:
-            freqs = _tfidf_freqs(grouped_df["grant_description"].astype(str).tolist(), list(stopwords), min_word_len)
+            freqs = _tfidf_freqs(
+                grouped_df["grant_description"].astype(str).tolist(), list(stopwords), min_word_len
+            )
             if not freqs:
-                st.info("No terms available for TF-IDF word cloud (possibly due to stopwords or short tokens). Falling back to raw text.")
+                st.info(
+                    "No terms available for TF-IDF word cloud (possibly due to stopwords or short tokens). Falling back to raw text."
+                )
                 use_tfidf = False
         if use_tfidf:
-            png = _cloud_png_bytes_from_freq(freqs, int(width), int(height), str(background_color), str(colormap))
+            png = _cloud_png_bytes_from_freq(
+                freqs, int(width), int(height), str(background_color), str(colormap)
+            )
         else:
             text = " ".join(grouped_df["grant_description"].astype(str))
             png = _cloud_png_bytes(
@@ -211,8 +306,11 @@ def grant_description_word_clouds(df, grouped_df, selected_chart, selected_role,
         # AI Explainer for word cloud (entire dataset)
         try:
             from utils.utils import generate_page_prompt
+
             additional_context = "the most common words found in grant descriptions"
-            pre_prompt = generate_page_prompt(df, grouped_df, selected_chart, selected_role, additional_context)
+            pre_prompt = generate_page_prompt(
+                df, grouped_df, selected_chart, selected_role, additional_context
+            )
             render_ai_explainer(grouped_df, pre_prompt, chart_id="wordclouds.main")
         except Exception:
             pass
@@ -246,8 +344,7 @@ def grant_description_word_clouds(df, grouped_df, selected_chart, selected_role,
             .astype(str)
             .value_counts()
             .nlargest(int(top_n))
-            .index
-            .tolist()
+            .index.tolist()
         )
 
         # Display in a responsive grid
@@ -262,9 +359,19 @@ def grant_description_word_clouds(df, grouped_df, selected_chart, selected_role,
                 value = top_values[idx]
                 filtered_df = grouped_df[grouped_df[selected_column].astype(str) == str(value)]
                 if use_tfidf:
-                    freqs = _tfidf_freqs(filtered_df["grant_description"].astype(str).tolist(), list(stopwords), min_word_len)
+                    freqs = _tfidf_freqs(
+                        filtered_df["grant_description"].astype(str).tolist(),
+                        list(stopwords),
+                        min_word_len,
+                    )
                     if freqs:
-                        png = _cloud_png_bytes_from_freq(freqs, max(int(width / num_cols), 300), int(height / 2), str(background_color), str(colormap))
+                        png = _cloud_png_bytes_from_freq(
+                            freqs,
+                            max(int(width / num_cols), 300),
+                            int(height / 2),
+                            str(background_color),
+                            str(colormap),
+                        )
                     else:
                         text = " ".join(filtered_df["grant_description"].astype(str))
                         png = _cloud_png_bytes(
@@ -313,14 +420,22 @@ def grant_description_word_clouds(df, grouped_df, selected_chart, selected_role,
             key="wordclouds_chat_target",
         )
         st.subheader("Grant Description — AI Assistant")
-        st.write("Ask questions about the grant descriptions to gain insights and explore the data further.")
+        st.write(
+            "Ask questions about the grant descriptions to gain insights and explore the data further."
+        )
         # Single selector per page: set chart id for downstream chat context
         set_selected_chart("wordclouds.main")
         additional_context = "the word clouds and search functionality for grant descriptions"
-        pre_prompt = generate_page_prompt(df, grouped_df, selected_chart, selected_role, additional_context)
-        chat_panel(grouped_df, pre_prompt, state_key="wordclouds_chat", title="Word Clouds — AI Assistant")
+        pre_prompt = generate_page_prompt(
+            df, grouped_df, selected_chart, selected_role, additional_context
+        )
+        chat_panel(
+            grouped_df, pre_prompt, state_key="wordclouds_chat", title="Word Clouds — AI Assistant"
+        )
     else:
-        st.info("AI-assisted analysis is disabled. Please provide an API key to enable this feature.")
+        st.info(
+            "AI-assisted analysis is disabled. Please provide an API key to enable this feature."
+        )
 
     st.divider()
 
@@ -336,16 +451,34 @@ def grant_description_word_clouds(df, grouped_df, selected_chart, selected_role,
         terms = [t.strip().lower() for t in input_text.split(",") if t.strip()]
         series = grouped_df["grant_description"].astype(str).str.lower()
         if match_type == "all":
-            mask = np.logical_and.reduce([series.str.contains(t, regex=False) for t in terms]) if terms else np.array([True] * len(series))
+            mask = (
+                np.logical_and.reduce([series.str.contains(t, regex=False) for t in terms])
+                if terms
+                else np.array([True] * len(series))
+            )
         else:
-            mask = np.logical_or.reduce([series.str.contains(t, regex=False) for t in terms]) if terms else np.array([True] * len(series))
+            mask = (
+                np.logical_or.reduce([series.str.contains(t, regex=False) for t in terms])
+                if terms
+                else np.array([True] * len(series))
+            )
         results = grouped_df.loc[mask]
 
         if not results.empty:
             st.write(
                 f"Grant descriptions containing {'all' if match_type=='all' else 'any'} of: {', '.join(terms)}"
             )
-            cols_present = [c for c in ["grant_key", "grant_description", "funder_name", "funder_city", "funder_profile_url"] if c in results.columns]
+            cols_present = [
+                c
+                for c in [
+                    "grant_key",
+                    "grant_description",
+                    "funder_name",
+                    "funder_city",
+                    "funder_profile_url",
+                ]
+                if c in results.columns
+            ]
             grant_details = results[cols_present]
             edited_data = st.data_editor(grant_details, num_rows="dynamic")
             if st.button("Download Search Results as Excel"):

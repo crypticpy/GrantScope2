@@ -69,6 +69,7 @@ STAGES = [
     },
 ]
 
+
 def get_stage_info(backend_name: str) -> Optional[Dict]:
     """Map backend progress messages to stage info."""
     lowered = backend_name.lower()
@@ -105,6 +106,7 @@ def _push_progress(report_id: str, message: str) -> None:
         stage_info: Optional[Dict]
         try:
             from advisor.ui_progress import get_stage_info as _ui_get_stage_info  # type: ignore
+
             stage_info = _ui_get_stage_info(message)
         except ImportError:
             stage_info = get_stage_info(message)
@@ -113,24 +115,30 @@ def _push_progress(report_id: str, message: str) -> None:
         # Do not override completed/error
         if state.get("status") not in {"completed", "error"}:
             if stage_info:
-                state.update({
-                    "current_stage": stage_info["id"],
-                    "status": state.get("status", "running"),
-                    "message": message,
-                    "timestamp": datetime.utcnow().isoformat(),
-                })
+                state.update(
+                    {
+                        "current_stage": stage_info["id"],
+                        "status": state.get("status", "running"),
+                        "message": message,
+                        "timestamp": datetime.utcnow().isoformat(),
+                    }
+                )
             else:
-                state.update({
-                    "status": state.get("status", "running"),
-                    "message": message,
-                    "timestamp": datetime.utcnow().isoformat(),
-                })
+                state.update(
+                    {
+                        "status": state.get("status", "running"),
+                        "message": message,
+                        "timestamp": datetime.utcnow().isoformat(),
+                    }
+                )
             _PROGRESS_STATE[report_id] = state
+
 
 def _persist_report(report_id: str, report: ReportBundle) -> None:
     """Persist the final report in an in-memory store (thread-safe)."""
     with _LOCK:
         _REPORT_STORE[report_id] = report
+
 
 def get_progress_log(report_id: str) -> List[str]:
     """Get the progress log for a report (thread-safe)."""
@@ -148,6 +156,7 @@ def get_report(report_id: str) -> Optional[ReportBundle]:
     """Get the persisted report if available (thread-safe)."""
     with _LOCK:
         return _REPORT_STORE.get(report_id)
+
 
 def cleanup_progress_data(report_id: str) -> None:
     """Clean up progress data and report (thread-safe)."""

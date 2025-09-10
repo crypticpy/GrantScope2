@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 import pandas as pd
 import pytest
 
@@ -8,31 +9,28 @@ try:
 except Exception:  # pragma: no cover
     import advisor.pipeline as pipeline  # type: ignore
 
-from typing import List
 
 try:
     from GrantScope.advisor.schemas import (
-        InterviewInput,
-        StructuredNeeds,
         AnalysisPlan,
-        ReportBundle,
-        FigureArtifact,
         ChartSummary,
-        DataPoint,
+        FigureArtifact,
+        InterviewInput,
         Recommendations,
+        ReportBundle,
         ReportSection,
+        StructuredNeeds,
     )  # type: ignore
 except Exception:  # pragma: no cover
     from advisor.schemas import (
-        InterviewInput,
-        StructuredNeeds,
         AnalysisPlan,
-        ReportBundle,
-        FigureArtifact,
         ChartSummary,
-        DataPoint,
+        FigureArtifact,
+        InterviewInput,
         Recommendations,
+        ReportBundle,
         ReportSection,
+        StructuredNeeds,
     )  # type: ignore
 
 try:
@@ -60,7 +58,11 @@ def test_figures_default_produces_interpretations(monkeypatch: pytest.MonkeyPatc
     needs = StructuredNeeds(subjects=["health"], geographies=["TX"], populations=[])
 
     # Mock the LLM-backed interpreter to avoid network calls
-    monkeypatch.setattr(pipeline, "_interpret_chart_cached", lambda key, summary, interview_dict: "Short test interpretation.")
+    monkeypatch.setattr(
+        pipeline,
+        "_interpret_chart_cached",
+        lambda key, summary, interview_dict: "Short test interpretation.",
+    )
 
     # Act
     figs = pipeline._figures_default(df, interview, needs)

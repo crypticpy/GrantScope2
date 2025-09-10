@@ -2,12 +2,10 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-from utils.utils import generate_page_prompt
-from utils.chat_panel import chat_panel
-from utils.app_state import set_selected_chart
 from config import is_enabled
-from utils.help import render_help
 from utils.ai_explainer import render_ai_explainer
+from utils.app_state import set_selected_chart
+from utils.chat_panel import chat_panel
 
 
 def data_summary(df, grouped_df, selected_chart, selected_role, ai_enabled):
@@ -21,7 +19,8 @@ def data_summary(df, grouped_df, selected_chart, selected_role, ai_enabled):
     # Audience detection for helpers
     audience = "pro" if selected_role == "Grant Analyst/Writer" else "new"
     if is_enabled("GS_ENABLE_PLAIN_HELPERS") and audience == "new":
-        st.info("""
+        st.info(
+            """
         What this page shows:
         - The big picture of your grant data
         - Who gives money, who receives it, and which topics get funded
@@ -31,7 +30,8 @@ def data_summary(df, grouped_df, selected_chart, selected_role, ai_enabled):
         - Note the top funders and subjects
         - Compare these to your project focus and location
         - Click the checkboxes to see the numbers behind each chart
-        """)
+        """
+        )
 
     st.markdown(
         """
@@ -65,9 +65,7 @@ def data_summary(df, grouped_df, selected_chart, selected_role, ai_enabled):
     except Exception:
         pass
     unique_df = df.drop_duplicates(subset="grant_key")
-    top_funders = (
-        unique_df.groupby("funder_name")["amount_usd"].sum().nlargest(top_n).reset_index()
-    )
+    top_funders = unique_df.groupby("funder_name")["amount_usd"].sum().nlargest(top_n).reset_index()
 
     fig = px.bar(
         top_funders,
@@ -81,6 +79,7 @@ def data_summary(df, grouped_df, selected_chart, selected_role, ai_enabled):
     # AI Explainer for Top Funders chart
     try:
         from utils.utils import generate_page_prompt
+
         additional_context = f"the top {top_n} funders by total grant amount"
         pre_prompt = generate_page_prompt(
             df,
@@ -91,12 +90,15 @@ def data_summary(df, grouped_df, selected_chart, selected_role, ai_enabled):
             current_filters={"top_n": int(top_n)},
             sample_df=top_funders,
         )
-        render_ai_explainer(top_funders, pre_prompt, chart_id="data_summary.top_funders", sample_df=top_funders)
+        render_ai_explainer(
+            top_funders, pre_prompt, chart_id="data_summary.top_funders", sample_df=top_funders
+        )
     except Exception:
         pass
 
     if is_enabled("GS_ENABLE_PLAIN_HELPERS") and audience == "new":
-        st.success("""
+        st.success(
+            """
         Why this matters:
         - These are the funders that give the most in your data
         - If your project matches their focus, they may be good targets
@@ -104,7 +106,8 @@ def data_summary(df, grouped_df, selected_chart, selected_role, ai_enabled):
         Next steps:
         - Click "Show Top Funders Data Table" to see their names
         - Write down 3–5 funders to research
-        """)
+        """
+        )
 
     # Defer AI chat rendering; consolidated into a single chat panel with context selector below.
     if not ai_enabled:
@@ -116,6 +119,7 @@ def data_summary(df, grouped_df, selected_chart, selected_role, ai_enabled):
     # Smart recommendations panel
     try:
         from utils.recommendations import GrantRecommender
+
         GrantRecommender.render_panel(unique_df)
     except Exception:
         pass
@@ -139,7 +143,10 @@ def data_summary(df, grouped_df, selected_chart, selected_role, ai_enabled):
 
     # Generate the pie chart with the possibly modified dataframe
     fig = px.pie(
-        top_categories, values="amount_usd", names="funder_type", title="Grant Distribution by Funder Type"
+        top_categories,
+        values="amount_usd",
+        names="funder_type",
+        title="Grant Distribution by Funder Type",
     )
     st.plotly_chart(fig, use_container_width=True)
 
@@ -161,7 +168,12 @@ def data_summary(df, grouped_df, selected_chart, selected_role, ai_enabled):
             current_filters=None,
             sample_df=top_categories,
         )
-        render_ai_explainer(top_categories, pre_prompt, chart_id="data_summary.funder_type", sample_df=top_categories)
+        render_ai_explainer(
+            top_categories,
+            pre_prompt,
+            chart_id="data_summary.funder_type",
+            sample_df=top_categories,
+        )
     except Exception:
         pass
 
@@ -193,7 +205,9 @@ def data_summary(df, grouped_df, selected_chart, selected_role, ai_enabled):
             current_filters=None,
             sample_df=subject_dist,
         )
-        render_ai_explainer(subject_dist, pre_prompt, chart_id="data_summary.subject_areas", sample_df=subject_dist)
+        render_ai_explainer(
+            subject_dist, pre_prompt, chart_id="data_summary.subject_areas", sample_df=subject_dist
+        )
     except Exception:
         pass
 
@@ -222,7 +236,12 @@ def data_summary(df, grouped_df, selected_chart, selected_role, ai_enabled):
             current_filters=None,
             sample_df=population_dist,
         )
-        render_ai_explainer(population_dist, pre_prompt, chart_id="data_summary.population_served", sample_df=population_dist)
+        render_ai_explainer(
+            population_dist,
+            pre_prompt,
+            chart_id="data_summary.population_served",
+            sample_df=population_dist,
+        )
     except Exception:
         pass
 
@@ -320,9 +339,7 @@ def data_summary(df, grouped_df, selected_chart, selected_role, ai_enabled):
 
         else:
             set_selected_chart("data_summary.general")
-            additional_context = (
-                "the overall grant dataset, including funders, recipients, grant amounts, subject areas, and populations served"
-            )
+            additional_context = "the overall grant dataset, including funders, recipients, grant amounts, subject areas, and populations served"
             pre_prompt = generate_page_prompt(
                 df,
                 grouped_df,

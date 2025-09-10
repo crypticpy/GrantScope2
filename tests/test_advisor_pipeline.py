@@ -1,15 +1,15 @@
-import pytest
 import pandas as pd
+import pytest
 
 # Import pipeline module to enable monkeypatching its internals
 try:
     import GrantScope.advisor.pipeline as ap  # type: ignore
-    from GrantScope.advisor.schemas import InterviewInput, ReportBundle  # type: ignore
     from GrantScope.advisor.demo import get_demo_interview  # type: ignore
+    from GrantScope.advisor.schemas import InterviewInput, ReportBundle  # type: ignore
 except Exception:  # pragma: no cover
     import advisor.pipeline as ap  # type: ignore
-    from advisor.schemas import InterviewInput, ReportBundle  # type: ignore
     from advisor.demo import get_demo_interview  # type: ignore
+    from advisor.schemas import InterviewInput, ReportBundle  # type: ignore
 
 
 def _tiny_df() -> pd.DataFrame:
@@ -59,11 +59,21 @@ def test_pipeline_with_mocks(monkeypatch):
     interview = InterviewInput(program_area="Education", populations=["youth"], geography=["TX"])
 
     # Stub deterministic cached stages to avoid API calls
-    monkeypatch.setattr(ap, "_stage0_intake_summary_cached", lambda key, d: "This is a concise intake summary.", raising=True)
+    monkeypatch.setattr(
+        ap,
+        "_stage0_intake_summary_cached",
+        lambda key, d: "This is a concise intake summary.",
+        raising=True,
+    )
     monkeypatch.setattr(
         ap,
         "_stage1_normalize_cached",
-        lambda key, d: {"subjects": ["education"], "populations": ["youth"], "geographies": ["TX"], "weights": {}},
+        lambda key, d: {
+            "subjects": ["education"],
+            "populations": ["youth"],
+            "geographies": ["TX"],
+            "weights": {},
+        },
         raising=True,
     )
     monkeypatch.setattr(
@@ -71,8 +81,21 @@ def test_pipeline_with_mocks(monkeypatch):
         "_stage2_plan_cached",
         lambda key, d: {
             "metric_requests": [
-                {"tool": "df_value_counts", "params": {"column": "grant_population_tran", "n": 5}, "title": "Population freq"},
-                {"tool": "df_pivot_table", "params": {"index": ["year_issued"], "value": "amount_usd", "agg": "sum", "top": 10}, "title": "Year trend"},
+                {
+                    "tool": "df_value_counts",
+                    "params": {"column": "grant_population_tran", "n": 5},
+                    "title": "Population freq",
+                },
+                {
+                    "tool": "df_pivot_table",
+                    "params": {
+                        "index": ["year_issued"],
+                        "value": "amount_usd",
+                        "agg": "sum",
+                        "top": 10,
+                    },
+                    "title": "Year trend",
+                },
             ],
             "narrative_outline": ["Overview", "Findings"],
         },
@@ -88,7 +111,9 @@ def test_pipeline_with_mocks(monkeypatch):
     monkeypatch.setattr(
         ap,
         "_stage4_synthesize_cached",
-        lambda key, plan, dps: [{"title": "Synthesis", "markdown_body": "Grounded narrative referencing DP IDs."}],
+        lambda key, plan, dps: [
+            {"title": "Synthesis", "markdown_body": "Grounded narrative referencing DP IDs."}
+        ],
         raising=True,
     )
     monkeypatch.setattr(
@@ -96,9 +121,16 @@ def test_pipeline_with_mocks(monkeypatch):
         "_stage5_recommend_cached",
         lambda key, needs, dps: {
             "funder_candidates": [
-                {"name": "Example Foundation", "score": 0.9, "rationale": "Strong alignment", "grounded_dp_ids": ["DP-00000001"]}
+                {
+                    "name": "Example Foundation",
+                    "score": 0.9,
+                    "rationale": "Strong alignment",
+                    "grounded_dp_ids": ["DP-00000001"],
+                }
             ],
-            "response_tuning": [{"text": "Emphasize STEM outcomes", "grounded_dp_ids": ["DP-00000001"]}],
+            "response_tuning": [
+                {"text": "Emphasize STEM outcomes", "grounded_dp_ids": ["DP-00000001"]}
+            ],
             "search_queries": [{"query": "STEM youth Texas grants", "notes": ""}],
         },
         raising=True,
@@ -116,11 +148,18 @@ def test_demo_flow_with_mocks(monkeypatch):
     interview = get_demo_interview()
 
     # Reuse the same stubs as above to avoid API calls and speed up tests
-    monkeypatch.setattr(ap, "_stage0_intake_summary_cached", lambda key, d: "Demo summary.", raising=True)
+    monkeypatch.setattr(
+        ap, "_stage0_intake_summary_cached", lambda key, d: "Demo summary.", raising=True
+    )
     monkeypatch.setattr(
         ap,
         "_stage1_normalize_cached",
-        lambda key, d: {"subjects": ["education"], "populations": ["youth"], "geographies": ["TX"], "weights": {}},
+        lambda key, d: {
+            "subjects": ["education"],
+            "populations": ["youth"],
+            "geographies": ["TX"],
+            "weights": {},
+        },
         raising=True,
     )
     monkeypatch.setattr(
@@ -128,13 +167,22 @@ def test_demo_flow_with_mocks(monkeypatch):
         "_stage2_plan_cached",
         lambda key, d: {
             "metric_requests": [
-                {"tool": "df_value_counts", "params": {"column": "grant_population_tran", "n": 5}, "title": "Population freq"}
+                {
+                    "tool": "df_value_counts",
+                    "params": {"column": "grant_population_tran", "n": 5},
+                    "title": "Population freq",
+                }
             ],
             "narrative_outline": ["Overview"],
         },
         raising=True,
     )
-    monkeypatch.setattr(ap, "tool_query", lambda _df, _q, _pre, _extra=None: "| k | v |\n| - | - |\n| a | b |", raising=True)
+    monkeypatch.setattr(
+        ap,
+        "tool_query",
+        lambda _df, _q, _pre, _extra=None: "| k | v |\n| - | - |\n| a | b |",
+        raising=True,
+    )
     monkeypatch.setattr(
         ap,
         "_stage4_synthesize_cached",
@@ -144,7 +192,11 @@ def test_demo_flow_with_mocks(monkeypatch):
     monkeypatch.setattr(
         ap,
         "_stage5_recommend_cached",
-        lambda key, needs, dps: {"funder_candidates": [], "response_tuning": [], "search_queries": []},
+        lambda key, needs, dps: {
+            "funder_candidates": [],
+            "response_tuning": [],
+            "search_queries": [],
+        },
         raising=True,
     )
 
@@ -154,6 +206,7 @@ def test_demo_flow_with_mocks(monkeypatch):
     assert report.interview.program_area != ""
     assert isinstance(report.sections, list)
     assert isinstance(report.datapoints, list)
+
 
 def test_fallback_candidates_from_sample(monkeypatch):
     # Local import to avoid modifying module imports
@@ -167,11 +220,18 @@ def test_fallback_candidates_from_sample(monkeypatch):
     df, _grouped_df = preprocess_data(grants)
 
     # Stub deterministic cached stages to avoid API calls and force fallback
-    monkeypatch.setattr(ap, "_stage0_intake_summary_cached", lambda key, d: "Summary.", raising=True)
+    monkeypatch.setattr(
+        ap, "_stage0_intake_summary_cached", lambda key, d: "Summary.", raising=True
+    )
     monkeypatch.setattr(
         ap,
         "_stage1_normalize_cached",
-        lambda key, d: {"subjects": ["education"], "populations": ["youth"], "geographies": ["TX"], "weights": {}},
+        lambda key, d: {
+            "subjects": ["education"],
+            "populations": ["youth"],
+            "geographies": ["TX"],
+            "weights": {},
+        },
         raising=True,
     )
     # Plan without funder-level metrics (pipeline should auto-ensure one, but we force fallback by empty recs)
@@ -180,7 +240,11 @@ def test_fallback_candidates_from_sample(monkeypatch):
         "_stage2_plan_cached",
         lambda key, d: {
             "metric_requests": [
-                {"tool": "df_value_counts", "params": {"column": "grant_subject_tran", "n": 5}, "title": "Subjects"}
+                {
+                    "tool": "df_value_counts",
+                    "params": {"column": "grant_subject_tran", "n": 5},
+                    "title": "Subjects",
+                }
             ],
             "narrative_outline": ["Overview"],
         },
@@ -203,11 +267,17 @@ def test_fallback_candidates_from_sample(monkeypatch):
     monkeypatch.setattr(
         ap,
         "_stage5_recommend_cached",
-        lambda key, needs, dps: {"funder_candidates": [], "response_tuning": [], "search_queries": []},
+        lambda key, needs, dps: {
+            "funder_candidates": [],
+            "response_tuning": [],
+            "search_queries": [],
+        },
         raising=True,
     )
 
-    interview = InterviewInput(program_area="STEM Education", populations=["Youth"], geography=["TX"])
+    interview = InterviewInput(
+        program_area="STEM Education", populations=["Youth"], geography=["TX"]
+    )
     report = ap.run_interview_pipeline(interview, df)
 
     cands = report.recommendations.funder_candidates
@@ -228,11 +298,18 @@ def test_fallback_uses_count_when_amount_missing(monkeypatch):
     if "amount_usd" in df.columns:
         df = df.drop(columns=["amount_usd"])
 
-    monkeypatch.setattr(ap, "_stage0_intake_summary_cached", lambda key, d: "Summary.", raising=True)
+    monkeypatch.setattr(
+        ap, "_stage0_intake_summary_cached", lambda key, d: "Summary.", raising=True
+    )
     monkeypatch.setattr(
         ap,
         "_stage1_normalize_cached",
-        lambda key, d: {"subjects": ["education"], "populations": ["youth"], "geographies": ["TX"], "weights": {}},
+        lambda key, d: {
+            "subjects": ["education"],
+            "populations": ["youth"],
+            "geographies": ["TX"],
+            "weights": {},
+        },
         raising=True,
     )
     monkeypatch.setattr(
@@ -256,7 +333,11 @@ def test_fallback_uses_count_when_amount_missing(monkeypatch):
     monkeypatch.setattr(
         ap,
         "_stage5_recommend_cached",
-        lambda key, needs, dps: {"funder_candidates": [], "response_tuning": [], "search_queries": []},
+        lambda key, needs, dps: {
+            "funder_candidates": [],
+            "response_tuning": [],
+            "search_queries": [],
+        },
         raising=True,
     )
 
@@ -284,11 +365,18 @@ def test_graceful_when_funder_missing(monkeypatch):
     # Drop funder_name to make fallback impossible
     df2 = df.drop(columns=["funder_name"])
 
-    monkeypatch.setattr(ap, "_stage0_intake_summary_cached", lambda key, d: "Summary.", raising=True)
+    monkeypatch.setattr(
+        ap, "_stage0_intake_summary_cached", lambda key, d: "Summary.", raising=True
+    )
     monkeypatch.setattr(
         ap,
         "_stage1_normalize_cached",
-        lambda key, d: {"subjects": ["education"], "populations": ["youth"], "geographies": ["TX"], "weights": {}},
+        lambda key, d: {
+            "subjects": ["education"],
+            "populations": ["youth"],
+            "geographies": ["TX"],
+            "weights": {},
+        },
         raising=True,
     )
     monkeypatch.setattr(
@@ -312,7 +400,11 @@ def test_graceful_when_funder_missing(monkeypatch):
     monkeypatch.setattr(
         ap,
         "_stage5_recommend_cached",
-        lambda key, needs, dps: {"funder_candidates": [], "response_tuning": [], "search_queries": []},
+        lambda key, needs, dps: {
+            "funder_candidates": [],
+            "response_tuning": [],
+            "search_queries": [],
+        },
         raising=True,
     )
 
@@ -323,16 +415,40 @@ def test_graceful_when_funder_missing(monkeypatch):
     assert report.recommendations is not None
     assert isinstance(report.recommendations.funder_candidates, list)
     assert len(report.recommendations.funder_candidates) == 0
+
+
 def test_stage5_coercion_sanitization_variants(monkeypatch):
     df = _tiny_df()
     interview = InterviewInput(program_area="Education")
 
     # Stub deterministic stages to avoid network/LLM
-    monkeypatch.setattr(ap, "_stage0_intake_summary_cached", lambda key, d: "Summary.", raising=True)
-    monkeypatch.setattr(ap, "_stage1_normalize_cached", lambda key, d: {"subjects": [], "populations": [], "geographies": [], "weights": {}}, raising=True)
-    monkeypatch.setattr(ap, "_stage2_plan_cached", lambda key, d: {"metric_requests": [], "narrative_outline": []}, raising=True)
-    monkeypatch.setattr(ap, "tool_query", lambda _df, _q, _pre, _extra=None: "| k | v |\n| - | - |\n| a | b |", raising=True)
-    monkeypatch.setattr(ap, "_stage4_synthesize_cached", lambda key, plan, dps: [{"title": "Synthesis", "markdown_body": "Narrative."}], raising=True)
+    monkeypatch.setattr(
+        ap, "_stage0_intake_summary_cached", lambda key, d: "Summary.", raising=True
+    )
+    monkeypatch.setattr(
+        ap,
+        "_stage1_normalize_cached",
+        lambda key, d: {"subjects": [], "populations": [], "geographies": [], "weights": {}},
+        raising=True,
+    )
+    monkeypatch.setattr(
+        ap,
+        "_stage2_plan_cached",
+        lambda key, d: {"metric_requests": [], "narrative_outline": []},
+        raising=True,
+    )
+    monkeypatch.setattr(
+        ap,
+        "tool_query",
+        lambda _df, _q, _pre, _extra=None: "| k | v |\n| - | - |\n| a | b |",
+        raising=True,
+    )
+    monkeypatch.setattr(
+        ap,
+        "_stage4_synthesize_cached",
+        lambda key, plan, dps: [{"title": "Synthesis", "markdown_body": "Narrative."}],
+        raising=True,
+    )
 
     # Provide mixed/dirty funder candidate inputs to exercise _coerce_funder_candidate
     monkeypatch.setattr(
@@ -341,7 +457,12 @@ def test_stage5_coercion_sanitization_variants(monkeypatch):
         lambda key, needs, dps: {
             "funder_candidates": [
                 # dict with only funder_name -> should coerce name from funder_name, score -> float, rationale -> str, grounded ids -> str list
-                {"funder_name": "Zed Foundation", "score": "0.7", "rationale": 123, "grounded_dp_ids": [1, "DP-X"]},
+                {
+                    "funder_name": "Zed Foundation",
+                    "score": "0.7",
+                    "rationale": 123,
+                    "grounded_dp_ids": [1, "DP-X"],
+                },
                 # invalid/empty-name cases -> should be skipped
                 {"name": None, "score": 0.1},
                 {"funder_name": None},
@@ -349,7 +470,7 @@ def test_stage5_coercion_sanitization_variants(monkeypatch):
                 "   ",
                 {"funder_name": "nan"},
                 {"label": "Label Funder"},  # should accept via 'label' fallback
-                "Simple String Funder",     # should accept as-is
+                "Simple String Funder",  # should accept as-is
             ],
             "response_tuning": [],
             "search_queries": [],
@@ -367,7 +488,10 @@ def test_stage5_coercion_sanitization_variants(monkeypatch):
     assert "Simple String Funder" in names
 
     # No null-ish/empty names should be present
-    assert all(isinstance(n, str) and n.strip() and n.strip().lower() not in {"nan", "none", "null"} for n in names)
+    assert all(
+        isinstance(n, str) and n.strip() and n.strip().lower() not in {"nan", "none", "null"}
+        for n in names
+    )
 
 
 def test_fallback_ignores_nullish_funders(monkeypatch):
@@ -383,12 +507,43 @@ def test_fallback_ignores_nullish_funders(monkeypatch):
     interview = InterviewInput(program_area="Test")
 
     # Stub deterministic stages and force empty LLM recs so fallback engages
-    monkeypatch.setattr(ap, "_stage0_intake_summary_cached", lambda key, d: "Summary.", raising=True)
-    monkeypatch.setattr(ap, "_stage1_normalize_cached", lambda key, d: {"subjects": [], "populations": [], "geographies": [], "weights": {}}, raising=True)
-    monkeypatch.setattr(ap, "_stage2_plan_cached", lambda key, d: {"metric_requests": [], "narrative_outline": []}, raising=True)
-    monkeypatch.setattr(ap, "tool_query", lambda _df, _q, _pre, _extra=None: "| k | v |\n| - | - |\n| a | b |", raising=True)
-    monkeypatch.setattr(ap, "_stage4_synthesize_cached", lambda key, plan, dps: [{"title": "Synthesis", "markdown_body": "Narrative."}], raising=True)
-    monkeypatch.setattr(ap, "_stage5_recommend_cached", lambda key, needs, dps: {"funder_candidates": [], "response_tuning": [], "search_queries": []}, raising=True)
+    monkeypatch.setattr(
+        ap, "_stage0_intake_summary_cached", lambda key, d: "Summary.", raising=True
+    )
+    monkeypatch.setattr(
+        ap,
+        "_stage1_normalize_cached",
+        lambda key, d: {"subjects": [], "populations": [], "geographies": [], "weights": {}},
+        raising=True,
+    )
+    monkeypatch.setattr(
+        ap,
+        "_stage2_plan_cached",
+        lambda key, d: {"metric_requests": [], "narrative_outline": []},
+        raising=True,
+    )
+    monkeypatch.setattr(
+        ap,
+        "tool_query",
+        lambda _df, _q, _pre, _extra=None: "| k | v |\n| - | - |\n| a | b |",
+        raising=True,
+    )
+    monkeypatch.setattr(
+        ap,
+        "_stage4_synthesize_cached",
+        lambda key, plan, dps: [{"title": "Synthesis", "markdown_body": "Narrative."}],
+        raising=True,
+    )
+    monkeypatch.setattr(
+        ap,
+        "_stage5_recommend_cached",
+        lambda key, needs, dps: {
+            "funder_candidates": [],
+            "response_tuning": [],
+            "search_queries": [],
+        },
+        raising=True,
+    )
 
     report = ap.run_interview_pipeline(interview, df)
     cands = report.recommendations.funder_candidates
@@ -398,4 +553,6 @@ def test_fallback_ignores_nullish_funders(monkeypatch):
     assert names.issubset({"A", "B", "C"})
     assert names == {"A", "B", "C"}  # all three valid appear
     assert all(c.score > 0 for c in cands if c.name in {"A", "B", "C"})
-    assert all(isinstance(c.rationale, str) and c.rationale for c in cands if c.name in {"A", "B", "C"})
+    assert all(
+        isinstance(c.rationale, str) and c.rationale for c in cands if c.name in {"A", "B", "C"}
+    )

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 Integration Test Scaffolding (autouse) to stabilize CI without real Streamlit/OpenAI.
 
@@ -33,16 +32,17 @@ from __future__ import annotations
 
 import importlib
 import sys
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from types import ModuleType
-from typing import Any, Callable, Iterator, Optional
+from typing import Any
 
 import pytest
-
 
 # ----------------------------- Early Bootstrap -----------------------------
 # Ensure a minimal Streamlit surface exists BEFORE tests import modules that use it.
 # This guards against individual tests installing a too-minimal stub that lacks cache decorators.
+
 
 def _ensure_streamlit_min_surface_no_mp() -> None:
     import sys as _sys
@@ -63,13 +63,15 @@ def _ensure_streamlit_min_surface_no_mp() -> None:
     # Shared recorder list for markdown-like calls
     if not hasattr(st_mod, "_md_calls"):
         try:
-            setattr(st_mod, "_md_calls", [])
+            st_mod._md_calls = []
         except Exception:
             pass
 
-    if not hasattr(st_mod, "session_state") or not isinstance(getattr(st_mod, "session_state", None), dict):
+    if not hasattr(st_mod, "session_state") or not isinstance(
+        getattr(st_mod, "session_state", None), dict
+    ):
         try:
-            setattr(st_mod, "session_state", {})
+            st_mod.session_state = {}
         except Exception:
             pass
 
@@ -80,18 +82,31 @@ def _ensure_streamlit_min_surface_no_mp() -> None:
             pass
 
     # Core UI funcs (attach only if missing so test-level mocks/patches still work)
-    for fname in ("markdown", "caption", "info", "help", "error", "warning", "success", "subheader"):
+    for fname in (
+        "markdown",
+        "caption",
+        "info",
+        "help",
+        "error",
+        "warning",
+        "success",
+        "subheader",
+    ):
         if not hasattr(st_mod, fname):
+
             def _f(text, **_kwargs):  # type: ignore
                 _append_call(text)
+
             try:
                 setattr(st_mod, fname, _f)
             except Exception:
                 pass
 
     if not hasattr(st_mod, "write"):
+
         def _write(*args, **_kwargs):
             _append_call(" ".join(map(str, args)))
+
         _ensure_attr("write", _write)
 
     if not hasattr(st_mod, "button"):
@@ -99,7 +114,9 @@ def _ensure_streamlit_min_surface_no_mp() -> None:
     if not hasattr(st_mod, "text_input"):
         _ensure_attr("text_input", lambda _label, **_kwargs: "")
     if not hasattr(st_mod, "selectbox"):
-        _ensure_attr("selectbox", lambda _label, options=None, **_kwargs: (list(options or []) or [None])[0])
+        _ensure_attr(
+            "selectbox", lambda _label, options=None, **_kwargs: (list(options or []) or [None])[0]
+        )
     if not hasattr(st_mod, "page_link"):
         _ensure_attr("page_link", lambda _path, **_kwargs: None)
     if not hasattr(st_mod, "switch_page"):
@@ -111,31 +128,41 @@ def _ensure_streamlit_min_surface_no_mp() -> None:
     from contextlib import contextmanager as _cm
 
     if not hasattr(st_mod, "expander"):
+
         @_cm
         def _expander(_label, expanded=False):
             yield
+
         _ensure_attr("expander", _expander)
 
     if not hasattr(st_mod, "spinner"):
+
         @_cm
         def _spinner(_text=""):
             yield
+
         _ensure_attr("spinner", _spinner)
 
     if not hasattr(st_mod, "container"):
+
         @_cm
         def _container():
             yield
+
         _ensure_attr("container", _container)
 
     if not hasattr(st_mod, "chat_message"):
+
         @_cm
         def _chat_message(_role: str):
             msg = _ModuleType("streamlit.chat_message_ctx")
+
             def _msg_markdown(text, **_k):
                 _append_call(text)
-            setattr(msg, "markdown", _msg_markdown)
+
+            msg.markdown = _msg_markdown
             yield msg
+
         _ensure_attr("chat_message", _chat_message)
 
     # Cache decorators
@@ -147,12 +174,16 @@ def _ensure_streamlit_min_surface_no_mp() -> None:
             if callable(fn):
                 # Used as @st.cache_data without params
                 return fn
+
             # Used as @st.cache_data(...)
             def _decorator(f):
                 return f
+
             return _decorator
+
         def clear(self):
             pass
+
     if not hasattr(st_mod, "cache_data"):
         st_mod.cache_data = _CacheWrapper()  # type: ignore[attr-defined]
     if not hasattr(st_mod, "cache_resource"):
@@ -162,31 +193,34 @@ def _ensure_streamlit_min_surface_no_mp() -> None:
     sb = getattr(st_mod, "sidebar", None)
     if not isinstance(sb, _ModuleType):
         sb = _ModuleType("streamlit.sidebar")
-        setattr(st_mod, "sidebar", sb)
+        st_mod.sidebar = sb
     if not hasattr(sb, "markdown"):
-        setattr(sb, "markdown", lambda text, **_k: _append_call(text))
+        sb.markdown = lambda text, **_k: _append_call(text)
     if not hasattr(sb, "subheader"):
-        setattr(sb, "subheader", lambda text, **_k: _append_call(text))
+        sb.subheader = lambda text, **_k: _append_call(text)
     if not hasattr(sb, "page_link"):
-        setattr(sb, "page_link", lambda _path, **_k: None)
+        sb.page_link = lambda _path, **_k: None
     if not hasattr(sb, "button"):
-        setattr(sb, "button", lambda _label, **_k: False)
+        sb.button = lambda _label, **_k: False
     if not hasattr(sb, "text_input"):
-        setattr(sb, "text_input", lambda _label, **_k: "")
+        sb.text_input = lambda _label, **_k: ""
     if not hasattr(sb, "selectbox"):
-        setattr(sb, "selectbox", lambda _label, options=None, **_k: (list(options or []) or [None])[0])
+        sb.selectbox = lambda _label, options=None, **_k: (list(options or []) or [None])[0]
     if not hasattr(sb, "file_uploader"):
-        setattr(sb, "file_uploader", lambda _label, **_k: None)
+        sb.file_uploader = lambda _label, **_k: None
     if not hasattr(sb, "expander"):
-        setattr(sb, "expander", getattr(st_mod, "expander"))
+        sb.expander = st_mod.expander
     if not hasattr(sb, "container"):
+
         @_cm
         def _sb_container():
             yield
-        setattr(sb, "container", _sb_container)
+
+        sb.container = _sb_container
     if not hasattr(sb, "popover"):
         # Behave similar to expander for tests
-        setattr(sb, "popover", getattr(st_mod, "expander"))
+        sb.popover = st_mod.expander
+
 
 # Run bootstrap immediately at import-time (before test collection)
 _ensure_streamlit_min_surface_no_mp()
@@ -195,20 +229,27 @@ _ensure_streamlit_min_surface_no_mp()
 # This ensures tests that swap in a minimal streamlit stub and then reload modules (e.g., utils.app_state)
 # get an augmented Streamlit surface with cache decorators before the reload executes.
 import importlib as _importlib
+
 _orig_reload = _importlib.reload
+
+
 def _safe_reload(module):
     try:
         _ensure_streamlit_min_surface_no_mp()
     except Exception:
         pass
     return _orig_reload(module)
+
+
 _importlib.reload = _safe_reload  # type: ignore[assignment]
 
 # Opportunistic patches for modules whose tests expect module-level alias behavior
 try:
     import utils.chat_panel as _cp  # type: ignore
+
     if hasattr(_cp, "_get_starter_prompts"):
         _orig_get_starters = _cp._get_starter_prompts  # type: ignore[attr-defined]
+
         def __patched_get_starter_prompts(chart_id: str | None = None) -> list[str]:
             try:
                 prof_getter = getattr(_cp, "get_session_profile", None)
@@ -231,14 +272,17 @@ try:
                 return _orig_get_starters(chart_id)  # type: ignore[misc]
             except Exception:
                 return []
+
         _cp._get_starter_prompts = __patched_get_starter_prompts  # type: ignore[attr-defined]
 except Exception:
     pass
 
 try:
     import utils.ai_explainer as _ae  # type: ignore
+
     # Patch _audience_preface to honor utils.ai_explainer.get_session_profile alias (as tests expect)
     if hasattr(_ae, "_audience_preface"):
+
         def __patched_audience_preface() -> str:
             try:
                 gsp = getattr(_ae, "get_session_profile", None)
@@ -251,6 +295,7 @@ try:
             except Exception:
                 pass
             return "Be concise and specific for an experienced user."
+
         _ae._audience_preface = __patched_audience_preface  # type: ignore[assignment]
 except Exception:
     pass
@@ -274,8 +319,8 @@ def _install_streamlit_stub(monkeypatch: pytest.MonkeyPatch) -> ModuleType:
     st_mod = ModuleType("streamlit")
 
     # Session state and captured markdown calls
-    setattr(st_mod, "session_state", {})
-    setattr(st_mod, "_md_calls", [])
+    st_mod.session_state = {}
+    st_mod._md_calls = []
 
     # Markdown-like emitters append to _md_calls for later assertions
     def _append_call(txt: Any) -> None:
@@ -326,25 +371,26 @@ def _install_streamlit_stub(monkeypatch: pytest.MonkeyPatch) -> ModuleType:
         # No-op in tests; caller expects a re-run but unit tests can proceed
         pass
 
-    setattr(st_mod, "markdown", markdown)
-    setattr(st_mod, "caption", caption)
-    setattr(st_mod, "info", info)
-    setattr(st_mod, "help", help)
-    setattr(st_mod, "error", error)
-    setattr(st_mod, "warning", warning)
-    setattr(st_mod, "success", success)
-    setattr(st_mod, "write", write)
-    setattr(st_mod, "subheader", subheader)
-    setattr(st_mod, "button", button)
-    setattr(st_mod, "text_input", text_input)
-    setattr(st_mod, "selectbox", selectbox)
-    setattr(st_mod, "rerun", rerun)
+    st_mod.markdown = markdown
+    st_mod.caption = caption
+    st_mod.info = info
+    st_mod.help = help
+    st_mod.error = error
+    st_mod.warning = warning
+    st_mod.success = success
+    st_mod.write = write
+    st_mod.subheader = subheader
+    st_mod.button = button
+    st_mod.text_input = text_input
+    st_mod.selectbox = selectbox
+    st_mod.rerun = rerun
 
     # Cache decorator-like objects
     class _CacheWrapper:
         def __call__(self, **_kwargs: Any) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
             def _decorator(fn: Callable[..., Any]) -> Callable[..., Any]:
                 return fn
+
             return _decorator
 
         # cache_resource in streamlit does not typically expose .clear
@@ -358,8 +404,8 @@ def _install_streamlit_stub(monkeypatch: pytest.MonkeyPatch) -> ModuleType:
             # No-op
             pass
 
-    setattr(st_mod, "cache_data", _CacheDataWrapper())
-    setattr(st_mod, "cache_resource", _CacheWrapper())
+    st_mod.cache_data = _CacheDataWrapper()
+    st_mod.cache_resource = _CacheWrapper()
 
     @contextmanager
     def _expander(_label: str, expanded: bool = False) -> Iterator[None]:
@@ -382,25 +428,25 @@ def _install_streamlit_stub(monkeypatch: pytest.MonkeyPatch) -> ModuleType:
         def _msg_markdown(text: str, **_kwargs: Any) -> None:
             _append_call(text)
 
-        setattr(msg, "markdown", _msg_markdown)
+        msg.markdown = _msg_markdown
         yield msg
 
-    setattr(st_mod, "expander", _expander)
-    setattr(st_mod, "spinner", _spinner)
-    setattr(st_mod, "container", _container)
-    setattr(st_mod, "chat_message", _chat_message)
+    st_mod.expander = _expander
+    st_mod.spinner = _spinner
+    st_mod.container = _container
+    st_mod.chat_message = _chat_message
 
     def _page_link(_path: str, **_kwargs: Any) -> None:
         # No-op; optionally record label if needed
         pass
 
-    setattr(st_mod, "page_link", _page_link)
+    st_mod.page_link = _page_link
 
     # Optional switch_page stub (used in navigation fallback)
     def _switch_page(_path: str) -> None:
         pass
 
-    setattr(st_mod, "switch_page", _switch_page)
+    st_mod.switch_page = _switch_page
 
     # Sidebar module-like object
     sidebar = ModuleType("streamlit.sidebar")
@@ -420,7 +466,9 @@ def _install_streamlit_stub(monkeypatch: pytest.MonkeyPatch) -> ModuleType:
     def sb_text_input(_label: str, **_kwargs: Any) -> str:
         return ""
 
-    def sb_selectbox(_label: str, options: list[str] | tuple[str, ...] | None = None, **_kwargs: Any):
+    def sb_selectbox(
+        _label: str, options: list[str] | tuple[str, ...] | None = None, **_kwargs: Any
+    ):
         opts = list(options or [])
         return opts[0] if opts else None
 
@@ -436,18 +484,18 @@ def _install_streamlit_stub(monkeypatch: pytest.MonkeyPatch) -> ModuleType:
         # Return None (no file) by default in tests
         return None
 
-    setattr(sidebar, "markdown", sb_markdown)
-    setattr(sidebar, "subheader", sb_subheader)
-    setattr(sidebar, "page_link", sb_page_link)
-    setattr(sidebar, "button", sb_button)
-    setattr(sidebar, "text_input", sb_text_input)
-    setattr(sidebar, "selectbox", sb_selectbox)
-    setattr(sidebar, "expander", _expander)
-    setattr(sidebar, "container", sb_container)
-    setattr(sidebar, "popover", sb_popover)
-    setattr(sidebar, "file_uploader", sb_file_uploader)
+    sidebar.markdown = sb_markdown
+    sidebar.subheader = sb_subheader
+    sidebar.page_link = sb_page_link
+    sidebar.button = sb_button
+    sidebar.text_input = sb_text_input
+    sidebar.selectbox = sb_selectbox
+    sidebar.expander = _expander
+    sidebar.container = sb_container
+    sidebar.popover = sb_popover
+    sidebar.file_uploader = sb_file_uploader
 
-    setattr(st_mod, "sidebar", sidebar)
+    st_mod.sidebar = sidebar
 
     # Register stub into sys.modules
     monkeypatch.setitem(sys.modules, "streamlit", st_mod)
@@ -465,7 +513,7 @@ def _install_openai_stubs(monkeypatch: pytest.MonkeyPatch) -> None:
         class _OpenAI:
             pass
 
-        setattr(openai_mod, "OpenAI", _OpenAI)
+        openai_mod.OpenAI = _OpenAI
         monkeypatch.setitem(sys.modules, "openai", openai_mod)
 
     if "openai.types" not in sys.modules:
@@ -480,8 +528,8 @@ def _install_openai_stubs(monkeypatch: pytest.MonkeyPatch) -> None:
         class ChatCompletionToolParam:
             pass
 
-        setattr(oa_chat, "ChatCompletionMessageParam", ChatCompletionMessageParam)
-        setattr(oa_chat, "ChatCompletionToolParam", ChatCompletionToolParam)
+        oa_chat.ChatCompletionMessageParam = ChatCompletionMessageParam
+        oa_chat.ChatCompletionToolParam = ChatCompletionToolParam
         monkeypatch.setitem(sys.modules, "openai.types.chat", oa_chat)
 
 
@@ -495,7 +543,7 @@ def _install_llama_index_stubs(monkeypatch: pytest.MonkeyPatch) -> None:
         class Settings:
             llm: Any = None
 
-        setattr(li_core, "Settings", Settings)
+        li_core.Settings = Settings
         monkeypatch.setitem(sys.modules, "llama_index.core", li_core)
     if "llama_index.llms" not in sys.modules:
         monkeypatch.setitem(sys.modules, "llama_index.llms", ModuleType("llama_index.llms"))
@@ -506,7 +554,7 @@ def _install_llama_index_stubs(monkeypatch: pytest.MonkeyPatch) -> None:
             def __init__(self, *args: Any, **kwargs: Any) -> None:
                 self.model = kwargs.get("model")
 
-        setattr(li_llms_openai, "OpenAI", _LI_OpenAI)
+        li_llms_openai.OpenAI = _LI_OpenAI
         monkeypatch.setitem(sys.modules, "llama_index.llms.openai", li_llms_openai)
 
 
@@ -514,6 +562,7 @@ def _install_config_stub_if_missing(monkeypatch: pytest.MonkeyPatch) -> None:
     """If 'config' module import fails, insert a minimal stub to satisfy patches."""
     try:
         import config as _  # noqa: F401
+
         return
     except Exception:
         pass
@@ -529,7 +578,7 @@ def _install_config_stub_if_missing(monkeypatch: pytest.MonkeyPatch) -> None:
     def is_feature_enabled(_flag: str, _default: bool = False) -> bool:
         return True
 
-    def get_openai_api_key() -> Optional[str]:
+    def get_openai_api_key() -> str | None:
         return None
 
     def get_model_name(default: str = "gpt-5-mini") -> str:
@@ -538,12 +587,12 @@ def _install_config_stub_if_missing(monkeypatch: pytest.MonkeyPatch) -> None:
     def refresh_cache() -> None:
         pass
 
-    setattr(cfg, "is_enabled", is_enabled)
-    setattr(cfg, "require_flag", require_flag)
-    setattr(cfg, "is_feature_enabled", is_feature_enabled)
-    setattr(cfg, "get_openai_api_key", get_openai_api_key)
-    setattr(cfg, "get_model_name", get_model_name)
-    setattr(cfg, "refresh_cache", refresh_cache)
+    cfg.is_enabled = is_enabled
+    cfg.require_flag = require_flag
+    cfg.is_feature_enabled = is_feature_enabled
+    cfg.get_openai_api_key = get_openai_api_key
+    cfg.get_model_name = get_model_name
+    cfg.refresh_cache = refresh_cache
     monkeypatch.setitem(sys.modules, "config", cfg)
 
 
@@ -567,7 +616,7 @@ class _DummyResp:
 
 
 class _DummyCompletions:
-    def __init__(self, client: "DummyOpenAIClient") -> None:
+    def __init__(self, client: DummyOpenAIClient) -> None:
         self._client = client
 
     def create(self, **kwargs: Any) -> Any:
@@ -580,7 +629,7 @@ class _DummyCompletions:
 
 
 class _DummyChat:
-    def __init__(self, client: "DummyOpenAIClient") -> None:
+    def __init__(self, client: DummyOpenAIClient) -> None:
         self.completions = _DummyCompletions(client)
 
 
@@ -595,7 +644,7 @@ class DummyOpenAIClient:
 
     def __init__(self) -> None:
         self.chat = _DummyChat(self)
-        self.last_kwargs: Optional[dict] = None
+        self.last_kwargs: dict | None = None
 
 
 def _make_dummy_openai_client() -> DummyOpenAIClient:
@@ -655,11 +704,13 @@ def _autouse_streamlit_and_openai_stubs() -> Iterator[None]:
     # 3.1) Ensure OPENAI_API_KEY is present for AI gating in tests and refresh config cache
     try:
         import os as _os  # local import
+
         if not _os.getenv("OPENAI_API_KEY"):
             _os.environ["OPENAI_API_KEY"] = "test-key"
         # Refresh real config module cache to pick up env (works for both real and stub)
         try:
             import config as _cfg  # type: ignore
+
             if hasattr(_cfg, "refresh_cache"):
                 _cfg.refresh_cache()  # type: ignore[attr-defined]
         except Exception:
@@ -681,7 +732,7 @@ def _autouse_streamlit_and_openai_stubs() -> Iterator[None]:
     # Tests that need a specific behavior will monkeypatch over this.
     try:
         dummy_client = _make_dummy_openai_client()
-        setattr(llm_setup, "get_openai_client", lambda: dummy_client)  # type: ignore[attr-defined]
+        llm_setup.get_openai_client = lambda: dummy_client  # type: ignore[attr-defined]
     except Exception:
         pass
 
@@ -717,7 +768,7 @@ def _autouse_streamlit_and_openai_stubs() -> Iterator[None]:
                 return _orig_get_starters(chart_id)  # type: ignore[misc]
             return []
 
-        setattr(_cp, "_get_starter_prompts", _patched_get_starter_prompts)
+        _cp._get_starter_prompts = _patched_get_starter_prompts
     except Exception:
         # If utils.chat_panel is unavailable, skip
         pass
@@ -725,6 +776,7 @@ def _autouse_streamlit_and_openai_stubs() -> Iterator[None]:
     # Teardown at end of test session
     yield
     mp.undo()
+
 
 @pytest.fixture(autouse=True)
 def _reset_markdown_calls_between_tests() -> Iterator[None]:
@@ -757,7 +809,7 @@ def _reset_markdown_calls_between_tests() -> Iterator[None]:
             pass
         try:
             if st_mod is not None and hasattr(st_mod, "_md_calls"):
-                setattr(st_mod, "_md_calls", [])
+                st_mod._md_calls = []
         except Exception:
             pass
     except Exception:
