@@ -10,9 +10,12 @@ from datetime import datetime
 
 import streamlit as st
 
+from utils.ai_writer import generate_project_brief_ai
+
 # require_flag removed — guided pages enabled by default
 from utils.app_state import get_session_profile, init_session_state, is_newbie, sidebar_controls
 from utils.help import render_help, render_page_help_panel
+from utils.user_context import derive_project_planner_prefill, load_interview_profile
 
 st.set_page_config(page_title="Project Planner - GrantScope", page_icon="📋")
 
@@ -132,6 +135,32 @@ def main():
         # Initialize session state for form data
         if "project_data" not in st.session_state:
             st.session_state.project_data = {}
+
+        # Attempt to prefill from Grant Advisor Interview (session or advisor_report.json)
+        try:
+            _prefill_used = False
+            interview = load_interview_profile()
+            if (
+                interview
+                and isinstance(st.session_state.project_data, dict)
+                and not st.session_state.project_data
+            ):
+                defaults = derive_project_planner_prefill(interview)
+                if isinstance(defaults, dict):
+                    for _k, _v in defaults.items():
+                        if _v and not st.session_state.project_data.get(_k):
+                            st.session_state.project_data[_k] = _v
+                            _prefill_used = True
+            if _prefill_used:
+                st.info(
+                    "Using your Grant Advisor interview to pre-fill fields. You can edit anything."
+                )
+                if st.button("Clear Prefill", key="planner_clear_prefill"):
+                    st.session_state.project_data = {}
+                    st.rerun()
+        except Exception:
+            # Prefill is best-effort only
+            pass
 
         with st.form("project_planner_form"):
             st.subheader("Basic Information")
@@ -320,26 +349,115 @@ def main():
         if st.session_state.get("project_data"):
             data = st.session_state.project_data
 
-            # Generate and display the brief
-            brief = render_project_brief(data)
+            # Controls to generate AI-authored brief and strategy
+            col_ai_1, col_ai_2 = st.columns([1, 1])
+            with col_ai_1:
+                if st.button(
+                    "🤖 Generate AI Project Brief", type="primary", key="planner_generate_ai"
+                ):
+                    try:
+                        interview_ctx = load_interview_profile()
+                    except Exception:
+                        interview_ctx = None
+                    with st.spinner("Generating AI project brief and strategy..."):
+                        ai_payload = generate_project_brief_ai(data, interview=interview_ctx)
+                    st.session_state["planner_ai_payload"] = ai_payload
+                    st.success("AI brief and strategy generated.")
+            with col_ai_2:
+                if st.button("🔄 Refresh AI (re-run)", key="planner_refresh_ai"):
+                    try:
+                        interview_ctx = load_interview_profile()
+                    except Exception:
+                        interview_ctx = None
+                    with st.spinner("Re-generating AI brief..."):
+                        ai_payload = generate_project_brief_ai(data, interview=interview_ctx)
+                    st.session_state["planner_ai_payload"] = ai_payload
+                    st.info("AI brief refreshed.")
 
-            st.markdown("### Project Summary")
-            st.info(brief)
+            ai_payload = st.session_state.get("planner_ai_payload")
 
-            # Additional details
-            if data.get("budget_range"):
-                st.markdown(f"**Estimated Budget**: {data['budget_range']}")
+            # Prefer AI output when available
+            if ai_payload and isinstance(ai_payload, dict):
+                st.markdown("### AI Project Brief")
+                try:
+                    st.markdown(
+                        ai_payload.get("brief_md", ""),
+                        help="Generated from your planner + interview inputs",
+                    )
+                except Exception:
+                    pass
 
-            if data.get("urgency"):
-                st.markdown(f"**Timeline Priority**: {data['urgency']}")
+                st.markdown("### AI Strategy Recommendations")
+                try:
+                    st.markdown(ai_payload.get("strategy_md", ""))
+                except Exception:
+                    pass
 
-            # Export options
-            st.markdown("### Export Your Brief")
-            col1, col2 = st.columns(2)
+                # Optional: show assumptions
+                assumptions = ai_payload.get("assumptions") or []
+                if isinstance(assumptions, list) and assumptions:
+                    with st.expander("Assumptions used by AI"):
+                        for a in assumptions:
+                            st.markdown(f"- {a}")
 
-            with col1:
-                # Text export
-                export_text = f"""PROJECT BRIEF: {data.get('project_name', 'Untitled Project')}
+                # Downloads for AI package
+                st.markdown("### Export")
+                col_d1, col_d2, col_d3 = st.columns(3)
+                with col_d1:
+                    st.download_button(
+                        label="📄 Download AI Brief (Markdown)",
+                        data=(ai_payload.get("brief_md") or ""),
+                        file_name=f"ai_project_brief_{data.get('project_name','untitled').replace(' ','_')}.md",
+                        mime="text/markdown",
+                    )
+                with col_d2:
+                    st.download_button(
+                        label="📘 Download AI Strategy (Markdown)",
+                        data=(ai_payload.get("strategy_md") or ""),
+                        file_name=f"ai_strategy_{data.get('project_name','untitled').replace(' ','_')}.md",
+                        mime="text/markdown",
+                    )
+                with col_d3:
+                    st.download_button(
+                        label="💾 Download AI Package (JSON)",
+                        data=json.dumps(ai_payload, indent=2),
+                        file_name=f"ai_project_package_{data.get('project_name','untitled').replace(' ','_')}.json",
+                        mime="application/json",
+                    )
+
+                # Also provide raw plan JSON export for user's inputs
+                with st.expander("Raw planner form data (JSON export)"):
+                    st.download_button(
+                        label="📦 Download Planner Data (JSON)",
+                        data=json.dumps(data, indent=2),
+                        file_name=f"project_plan_{data.get('project_name', 'untitled').replace(' ', '_')}.json",
+                        mime="application/json",
+                    )
+
+                # Offer a non-AI simple summary as reference
+                with st.expander("Simple summary (non-AI)"):
+                    brief_simple = render_project_brief(data)
+                    st.info(brief_simple)
+                    if data.get("budget_range"):
+                        st.markdown(f"**Estimated Budget**: {data['budget_range']}")
+                    if data.get("urgency"):
+                        st.markdown(f"**Timeline Priority**: {data['urgency']}")
+
+            else:
+                # Legacy, non-AI summary preview and exports
+                brief = render_project_brief(data)
+                st.markdown("### Project Summary")
+                st.info(brief)
+
+                if data.get("budget_range"):
+                    st.markdown(f"**Estimated Budget**: {data['budget_range']}")
+                if data.get("urgency"):
+                    st.markdown(f"**Timeline Priority**: {data['urgency']}")
+
+                st.markdown("### Export Your Brief")
+                col1, col2 = st.columns(2)
+                with col1:
+                    export_text = f"""PROJECT BRIEF: {data.get('project_name', 'Untitled Project')}
 Organization: {data.get('org_name', 'Not specified')}
 Budget Range: {data.get('budget_range', 'Not specified')}
 
@@ -363,22 +481,19 @@ URGENCY: {data.get('urgency', 'Not specified')}
 
 Generated by GrantScope Project Planner on {datetime.now().strftime('%Y-%m-%d')}
 """
-
-                st.download_button(
-                    label="📄 Download as Text",
-                    data=export_text,
-                    file_name=f"project_brief_{data.get('project_name', 'untitled').replace(' ', '_')}.txt",
-                    mime="text/plain",
-                )
-
-            with col2:
-                # JSON export
-                st.download_button(
-                    label="💾 Download as JSON",
-                    data=json.dumps(data, indent=2),
-                    file_name=f"project_plan_{data.get('project_name', 'untitled').replace(' ', '_')}.json",
-                    mime="application/json",
-                )
+                    st.download_button(
+                        label="📄 Download as Text",
+                        data=export_text,
+                        file_name=f"project_brief_{data.get('project_name', 'untitled').replace(' ', '_')}.txt",
+                        mime="text/plain",
+                    )
+                with col2:
+                    st.download_button(
+                        label="💾 Download as JSON",
+                        data=json.dumps(data, indent=2),
+                        file_name=f"project_plan_{data.get('project_name', 'untitled').replace(' ', '_')}.json",
+                        mime="application/json",
+                    )
 
         else:
             st.info(
@@ -391,7 +506,7 @@ Generated by GrantScope Project Planner on {datetime.now().strftime('%Y-%m-%d')}
         if st.session_state.get("project_data"):
             data = st.session_state.project_data
 
-            # Generate checklist
+            # Generate base checklist
             checklist = generate_starter_checklist(data, experience_level)
 
             st.markdown("### Recommended Action Items")
@@ -399,6 +514,17 @@ Generated by GrantScope Project Planner on {datetime.now().strftime('%Y-%m-%d')}
 
             for item in checklist:
                 st.markdown(item)
+
+            # If AI provided next steps, include them as well
+            ai_payload = st.session_state.get("planner_ai_payload")
+            if (
+                isinstance(ai_payload, dict)
+                and isinstance(ai_payload.get("next_steps"), list)
+                and ai_payload["next_steps"]
+            ):
+                st.markdown("### AI-Recommended Action Items")
+                for step in ai_payload["next_steps"]:
+                    st.markdown(f"- {step}")
 
             # Additional resources based on experience level
             if is_newbie_user:

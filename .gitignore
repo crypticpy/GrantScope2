@@ -3,6 +3,8 @@ getcode.sh
 old/
 .idea/
 .history/
+.artifacts/
+
 
 # Python cache/bytecode
 __pycache__/

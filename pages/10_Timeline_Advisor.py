@@ -10,7 +10,9 @@ from datetime import datetime, timedelta
 
 import streamlit as st
 
+from utils.ai_writer import generate_timeline_guidance_ai
 from utils.app_state import get_session_profile, init_session_state, is_newbie, sidebar_controls
+from utils.user_context import derive_timeline_prefill, load_interview_profile
 
 st.set_page_config(page_title="Timeline Advisor - GrantScope", page_icon="📅")
 
@@ -267,6 +269,100 @@ def main():
     with tab1:
         st.header("Tell us about your grant application")
 
+        # Attempt prefill from Grant Advisor Interview and/or Project Planner
+        pref_project_name = ""
+        pref_grant_complexity = None
+        pref_team_size = None
+        pref_review_needs: list[str] = []
+        prefill_used = False
+
+        try:
+            # If user chose to disable prefill explicitly, skip deriving values
+            disable_prefill = bool(st.session_state.get("__timeline_disable_prefill", False))  # type: ignore[attr-defined]
+        except Exception:
+            disable_prefill = False
+
+        # Options used by widgets
+        complexity_options = [
+            "Simple (under $25,000, basic requirements)",
+            "Medium (up to $100,000, standard requirements)",
+            "Complex (over $100,000, detailed requirements)",
+        ]
+        team_options = ["Just me", "2-3 people", "4+ people"]
+        review_options = [
+            "Board approval",
+            "Department head approval",
+            "External partner review",
+            "Financial review",
+            "Legal review",
+        ]
+
+        if not disable_prefill:
+            try:
+                interview = load_interview_profile()
+                planner_data = st.session_state.get("project_data") if isinstance(st.session_state.get("project_data"), dict) else None  # type: ignore[attr-defined]
+                if interview:
+                    derived = derive_timeline_prefill(
+                        interview,
+                        planner_data=planner_data,
+                        experience_level=experience_level,
+                    )
+                    if isinstance(derived, dict):
+                        # Project/Grant Name
+                        if isinstance(derived.get("project_name"), str) and derived["project_name"]:
+                            pref_project_name = derived["project_name"]
+                            prefill_used = True
+                        # Complexity
+                        if (
+                            isinstance(derived.get("grant_complexity"), str)
+                            and derived["grant_complexity"] in complexity_options
+                        ):
+                            pref_grant_complexity = derived["grant_complexity"]
+                            prefill_used = True
+                        # Team size
+                        if (
+                            isinstance(derived.get("team_size"), str)
+                            and derived["team_size"] in team_options
+                        ):
+                            pref_team_size = derived["team_size"]
+                            prefill_used = True
+                        # Review needs (keep empty by default)
+                        if (
+                            isinstance(derived.get("review_needs"), list)
+                            and derived["review_needs"]
+                        ):
+                            pref_review_needs = [
+                                x for x in derived["review_needs"] if isinstance(x, str)
+                            ]
+                            prefill_used = True
+            except Exception:
+                # Best-effort only
+                pass
+
+        if prefill_used:
+            st.info(
+                "Using your Grant Advisor interview to pre-fill timeline settings. You can edit anything."
+            )
+            if st.button("Clear Prefill", key="timeline_clear_prefill"):
+                try:
+                    st.session_state["__timeline_disable_prefill"] = True  # type: ignore[attr-defined]
+                except Exception:
+                    pass
+                st.rerun()
+
+        # Compute widget indices from derived values
+        complexity_index = (
+            complexity_options.index(pref_grant_complexity)
+            if isinstance(pref_grant_complexity, str)
+            and pref_grant_complexity in complexity_options
+            else 0
+        )
+        team_index = (
+            team_options.index(pref_team_size)
+            if isinstance(pref_team_size, str) and pref_team_size in team_options
+            else 0
+        )
+
         with st.form("timeline_form"):
             col1, col2 = st.columns(2)
 
@@ -275,6 +371,7 @@ def main():
 
                 project_name = st.text_input(
                     "Project/Grant Name",
+                    value=pref_project_name or "",
                     placeholder="What are you calling this grant?",
                     help="This helps personalize your timeline",
                 )
@@ -288,11 +385,8 @@ def main():
 
                 grant_complexity = st.selectbox(
                     "How complex is this grant?",
-                    options=[
-                        "Simple (under $25,000, basic requirements)",
-                        "Medium (up to $100,000, standard requirements)",
-                        "Complex (over $100,000, detailed requirements)",
-                    ],
+                    options=complexity_options,
+                    index=complexity_index,
                     help="Complex grants need more time for research and documentation",
                 )
 
@@ -301,19 +395,15 @@ def main():
 
                 team_size = st.selectbox(
                     "Who's working on this application?",
-                    options=["Just me", "2-3 people", "4+ people"],
+                    options=team_options,
+                    index=team_index,
                     help="Larger teams can work faster but need coordination time",
                 )
 
                 review_needs = st.multiselect(
                     "What approvals do you need?",
-                    options=[
-                        "Board approval",
-                        "Department head approval",
-                        "External partner review",
-                        "Financial review",
-                        "Legal review",
-                    ],
+                    options=review_options,
+                    default=pref_review_needs,
                     help="These reviews take additional time - plan accordingly",
                 )
 
@@ -392,6 +482,82 @@ def main():
             # Show timeline table
             if "milestones" in data and data["milestones"]:
                 render_timeline_table(data["milestones"])
+
+                # AI guidance generation
+                col_ai1, col_ai2 = st.columns([1, 1])
+                with col_ai1:
+                    if st.button("🤖 Generate AI Timeline Guidance", key="timeline_generate_ai"):
+                        try:
+                            interview_ctx = load_interview_profile()
+                        except Exception:
+                            interview_ctx = None
+                        planner_ctx = st.session_state.get("project_data") if isinstance(st.session_state.get("project_data"), dict) else None  # type: ignore[attr-defined]
+                        with st.spinner("Generating AI timeline guidance..."):
+                            ai_tl = generate_timeline_guidance_ai(
+                                data,
+                                planner=planner_ctx,
+                                interview=interview_ctx,
+                            )
+                        st.session_state["timeline_ai_payload"] = ai_tl  # type: ignore[attr-defined]
+                        st.success("AI timeline guidance generated.")
+                with col_ai2:
+                    if st.button("🔄 Refresh AI Guidance", key="timeline_refresh_ai"):
+                        try:
+                            interview_ctx = load_interview_profile()
+                        except Exception:
+                            interview_ctx = None
+                        planner_ctx = st.session_state.get("project_data") if isinstance(st.session_state.get("project_data"), dict) else None  # type: ignore[attr-defined]
+                        with st.spinner("Re-generating AI timeline guidance..."):
+                            ai_tl = generate_timeline_guidance_ai(
+                                data,
+                                planner=planner_ctx,
+                                interview=interview_ctx,
+                            )
+                        st.session_state["timeline_ai_payload"] = ai_tl  # type: ignore[attr-defined]
+                        st.info("AI guidance refreshed.")
+
+                ai_tl = st.session_state.get("timeline_ai_payload")  # type: ignore[attr-defined]
+                if isinstance(ai_tl, dict):
+                    st.markdown("### AI Timeline Guidance")
+                    st.markdown(ai_tl.get("timeline_guidance_md", ""))
+
+                    st.markdown("### Recommended Submission Cadence")
+                    st.markdown(ai_tl.get("cadence_md", ""))
+
+                    st.markdown("### Stagger Plan")
+                    st.markdown(ai_tl.get("stagger_plan_md", ""))
+
+                    risks = ai_tl.get("risks_mitigations") or []
+                    if isinstance(risks, list) and risks:
+                        with st.expander("Risks and Mitigations"):
+                            for r in risks:
+                                st.markdown(f"- {r}")
+
+                    # Export options for AI guidance
+                    col_dl1, col_dl2 = st.columns(2)
+                    with col_dl1:
+                        st.download_button(
+                            label="📄 Download AI Guidance (Markdown)",
+                            data="\n\n".join(
+                                [
+                                    "# Timeline Guidance",
+                                    ai_tl.get("timeline_guidance_md", ""),
+                                    "\n# Cadence",
+                                    ai_tl.get("cadence_md", ""),
+                                    "\n# Stagger Plan",
+                                    ai_tl.get("stagger_plan_md", ""),
+                                ]
+                            ),
+                            file_name=f"ai_timeline_{data['project_name'].replace(' ', '_')}.md",
+                            mime="text/markdown",
+                        )
+                    with col_dl2:
+                        st.download_button(
+                            label="💾 Download AI Package (JSON)",
+                            data=json.dumps(ai_tl, indent=2, default=str),
+                            file_name=f"ai_timeline_{data['project_name'].replace(' ', '_')}.json",
+                            mime="application/json",
+                        )
 
                 # Additional tips based on user profile
                 if is_newbie_user:
