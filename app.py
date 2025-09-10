@@ -130,9 +130,13 @@ def main() -> None:
             set_session_profile(new_profile)
             st.success("Setup complete! Welcome to GrantScope.")
             st.balloons()
-            # Give user a moment to see success message, then rerun to show main app
-            if st.button("Continue to Dashboard"):
-                st.rerun()
+            # Automatically navigate to the first page of the guided flow
+            from utils.navigation import (
+                continue_to,  # local import to avoid global dependency at startup
+            )
+
+            continue_to("pages/1_Data_Summary.py")
+            return
         return
 
     # Multipage landing: keep it light; shared state lives in utils/app_state.py and individual pages

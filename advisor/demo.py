@@ -9,6 +9,7 @@ APIs:
 
 from __future__ import annotations
 
+import contextlib
 import json as _json
 import os
 from typing import Any
@@ -56,7 +57,7 @@ def load_demo_responses_json(
     Returns:
         dict with InterviewInput fields if file exists and loads successfully, else None.
     """
-    try:
+    with contextlib.suppress(Exception):
         if not os.path.exists(path):
             # Try bare repo-relative path if running inside package dir structure
             alt = os.path.join("advisor", "demo_responses.json")
@@ -68,6 +69,4 @@ def load_demo_responses_json(
             data = _json.load(f)
         if isinstance(data, dict):
             return data
-    except Exception:
-        pass
     return None

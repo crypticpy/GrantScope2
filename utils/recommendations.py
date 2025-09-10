@@ -21,6 +21,7 @@ except Exception:
     import config  # type: ignore
 
 from loaders.llama_index_setup import get_openai_client
+from utils.utils import sanitize_markdown
 
 SourceType = Literal["data", "ai"]
 
@@ -237,8 +238,10 @@ class GrantRecommender:
                 st.info("No recommendations available for this view.")
                 return
             for r in recs:
+                title = sanitize_markdown(r.title)
+                reason = sanitize_markdown(r.reason)
                 if r.source == "ai":
-                    st.markdown(f"**{r.title}**")
-                    st.markdown(r.reason)
+                    st.markdown(f"**{title}**")
+                    st.markdown(reason)
                 else:
-                    st.success(f"**{r.title}** — {r.reason}")
+                    st.success(f"**{title}** — {reason}")

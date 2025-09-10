@@ -5,7 +5,7 @@ from config import is_enabled
 from utils.ai_explainer import render_ai_explainer
 from utils.app_state import set_selected_chart
 from utils.chat_panel import chat_panel
-from utils.utils import download_excel, generate_page_prompt
+from utils.utils import download_excel, generate_page_prompt, sanitize_markdown
 
 
 def treemaps_extended_analysis(df, grouped_df, selected_chart, selected_role, ai_enabled):
@@ -161,7 +161,7 @@ def treemaps_extended_analysis(df, grouped_df, selected_chart, selected_role, ai
                 st.subheader("💡 Smart Recommendations")
                 for i, rec in enumerate(recs[:3]):
                     with st.expander(f"💡 {rec.title}", expanded=i == 0):
-                        st.write(rec.reason)
+                        st.markdown(sanitize_markdown(rec.reason))
         except Exception:
             pass
 

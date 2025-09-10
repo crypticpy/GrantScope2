@@ -12,6 +12,7 @@ from typing import Literal, TypedDict, cast
 import streamlit as st
 
 from config import is_enabled
+from utils.utils import sanitize_markdown
 
 
 class GlossaryEntry(TypedDict):
@@ -201,12 +202,12 @@ def render_help(
 
     # Render based on variant
     if variant == "tooltip":
-        st.help(content)
+        st.help(sanitize_markdown(content))
     elif variant == "expander":
         with st.expander(f"ℹ️ What is {entry['term']}?", expanded=False):
-            st.markdown(content)
+            st.markdown(sanitize_markdown(content))
     elif variant == "sidebar":
-        st.sidebar.markdown(content)
+        st.sidebar.markdown(sanitize_markdown(content))
 
 
 def render_glossary_search() -> None:

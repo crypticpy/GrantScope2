@@ -130,6 +130,13 @@ def render_live_progress_tracker(report_id: str, show_estimates: bool = True) ->
                         st.caption(f"📝 {stage['description']}")
                         if show_estimates:
                             st.caption(f"⏱️ Estimated: {stage['estimated_time']}")
+                        # Show dynamic backend message (e.g., item counts/progress hints)
+                        try:
+                            msg = progress_data.get("message")
+                        except Exception:
+                            msg = None
+                        if msg:
+                            st.caption(f"🔎 {msg}")
                     elif status == "error":
                         st.error(f"{stage['icon']} {stage['title']} - Error occurred")
                     else:

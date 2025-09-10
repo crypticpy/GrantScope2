@@ -23,6 +23,11 @@ try:
     import streamlit.components.v1 as components  # type: ignore
 except Exception:  # pragma: no cover
     components = None  # type: ignore
+# Optional pandas import for table rendering
+try:
+    import pandas as pd  # type: ignore
+except Exception:  # pragma: no cover
+    pd = None  # type: ignore
 
 # Flexible type imports to avoid circular analysis issues in some environments
 if TYPE_CHECKING:
@@ -301,6 +306,43 @@ def build_workbook_bundle(
     assets: dict[str, bytes] = {}
 
     return {"markdown": markdown, "html": html, "assets": assets}
+
+
+def _markdown_table_to_df(md: str):
+    """Attempt to parse a GitHub-style Markdown table into a pandas DataFrame."""
+    if md is None or not isinstance(md, str) or pd is None:
+        return None
+    try:
+        # Normalize and split lines, drop empties
+        lines = [ln.strip() for ln in md.strip().splitlines() if ln.strip()]
+        if len(lines) < 2:
+            return None
+        header_line = lines[0]
+        sep_line = lines[1]
+        # Must look like a markdown table header + separator
+        if "|" not in header_line or "-" not in sep_line:
+            return None
+        # Parse headers
+        headers = [h.strip() for h in header_line.split("|") if h.strip()]
+        data_rows = []
+        for ln in lines[1:]:
+            # Skip pure separator rows
+            stripped = ln.replace("|", "").replace(":", "").replace("-", "").strip()
+            if stripped == "":
+                continue
+            parts = [c.strip() for c in ln.split("|")]
+            # Remove empty edge cells caused by leading/trailing pipes
+            parts = [c for c in parts if c != ""]
+            if len(parts) == len(headers):
+                data_rows.append(parts)
+        if not data_rows:
+            return None
+        import pandas as _pd  # local alias to avoid mypy confusion
+
+        df = _pd.DataFrame(data_rows, columns=headers)
+        return df
+    except Exception:
+        return None
 
 
 def _clean_interpretation_text(text: str, for_markdown: bool = True) -> str:
@@ -592,11 +634,16 @@ def render_report_streamlit(report: ReportBundle) -> None:
             for dp in report.datapoints:
                 st.markdown(f"**{dp.id} — {dp.title}**")
                 if dp.table_md:
-                    try:
-                        cleaned_table = _clean_narrative_md(dp.table_md)
-                    except Exception:
-                        cleaned_table = dp.table_md
-                    st.markdown(cleaned_table)
+                    # Prefer rendering as a proper table when possible
+                    df_tbl = _markdown_table_to_df(dp.table_md)
+                    if df_tbl is not None:
+                        st.dataframe(df_tbl, use_container_width=True)
+                    else:
+                        try:
+                            cleaned_table = _clean_narrative_md(dp.table_md)
+                        except Exception:
+                            cleaned_table = dp.table_md
+                        st.markdown(cleaned_table)
                 if dp.notes:
                     try:
                         cleaned_notes = _clean_narrative_md(dp.notes)
@@ -607,6 +654,37 @@ def render_report_streamlit(report: ReportBundle) -> None:
     with tab_recs:
         st.subheader("Recommendations")
         recs = report.recommendations
+        # Executive Summary and guidance (beginner-friendly)
+        exec_section = None
+        try:
+            if report.sections:
+                for s in report.sections:
+                    try:
+                        title_s = str(getattr(s, "title", "") or "")
+                    except Exception:
+                        title_s = ""
+                    if title_s.strip().lower().startswith("executive summary"):
+                        exec_section = s
+                        break
+                if exec_section is None:
+                    exec_section = report.sections[0]
+        except Exception:
+            exec_section = None
+        if exec_section:
+            try:
+                cleaned_exec = _clean_narrative_md(exec_section.markdown_body)
+            except Exception:
+                cleaned_exec = getattr(exec_section, "markdown_body", "")
+            if cleaned_exec:
+                st.markdown("##### Executive Summary")
+                st.markdown(cleaned_exec)
+                st.markdown("##### How to use this data")
+                st.markdown(
+                    "- Start with 2–3 funders below that match your subject and location.\n"
+                    "- Use typical award sizes in the tables to set a realistic ask (for many datasets ~$50k steps).\n"
+                    "- Cite similar grants as precedents in your summary and budget.\n"
+                    "- Track deadlines from each funder’s website before drafting."
+                )
         if not recs:
             st.info("No recommendations available.")
         else:

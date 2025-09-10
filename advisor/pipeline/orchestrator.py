@@ -125,7 +125,7 @@ def run_interview_pipeline(interview: InterviewInput, df: pd.DataFrame) -> Repor
     datapoints = _collect_datapoints(df_for_metrics, interview, plan)
     progress_callback(3, "completed", "Finished calculations")
 
-    # Stage 4: Synthesize sections (grounded with datapoints)
+    # Stage 4 + 5: run section synthesis and recommendations in parallel to reduce latency
     _push_progress(report_id, "Stage 4: Synthesizing report sections")
     progress_callback(4, "running", "Writing personalized recommendations")
 
@@ -149,36 +149,96 @@ def run_interview_pipeline(interview: InterviewInput, df: pd.DataFrame) -> Repor
         }
         for dp in datapoints
     ]
-    sections_raw = _stage4_synthesize_cached(key, _safe_to_dict(plan), dps_index)
-    sections = [
-        ReportSection(title=s["title"], markdown_body=s["markdown_body"]) for s in sections_raw
-    ]
-    progress_callback(4, "completed", "Finished writing recommendations")
 
-    # Stage 5: Recommendations
     _push_progress(report_id, "Stage 5: Generating recommendations")
     progress_callback(5, "running", "Identifying potential funders")
-    rec_raw = _stage5_recommend_cached(key, needs_dict, dps_index)
-    rec = Recommendations(
-        funder_candidates=[
-            fc
-            for fc in (
-                _coerce_funder_candidate(it) for it in (rec_raw.get("funder_candidates") or [])
+
+    sections: list[ReportSection] = []
+    rec = Recommendations()
+
+    try:
+        from concurrent.futures import ThreadPoolExecutor
+
+        with ThreadPoolExecutor(max_workers=2) as ex:
+            f_sec = ex.submit(_stage4_synthesize_cached, key, _safe_to_dict(plan), dps_index)
+            f_rec = ex.submit(_stage5_recommend_cached, key, needs_dict, dps_index)
+
+            # Gather sections
+            try:
+                sections_raw = f_sec.result()
+                sections = [
+                    ReportSection(title=s["title"], markdown_body=s["markdown_body"])
+                    for s in sections_raw
+                ]
+                progress_callback(4, "completed", "Finished writing recommendations")
+            except Exception:
+                # Graceful degradation: keep empty sections but still mark as completed
+                progress_callback(4, "completed", "Finished writing recommendations")
+
+            # Gather recommendations
+            try:
+                rec_raw = f_rec.result()
+                rec = Recommendations(
+                    funder_candidates=[
+                        fc
+                        for fc in (
+                            _coerce_funder_candidate(it)
+                            for it in (rec_raw.get("funder_candidates") or [])
+                        )
+                        if fc is not None
+                    ],
+                    response_tuning=[
+                        it if isinstance(it, TuningTip) else TuningTip(**cast(dict[str, Any], it))
+                        for it in (rec_raw.get("response_tuning") or [])
+                    ],
+                    search_queries=[
+                        sq
+                        for it in (rec_raw.get("search_queries") or [])
+                        for sq in (_coerce_search_query(it),)
+                        if sq is not None
+                    ],
+                )
+                progress_callback(5, "completed", "Finished identifying funders")
+            except Exception:
+                # Keep default/empty recs if generation failed
+                progress_callback(5, "completed", "Finished identifying funders")
+    except Exception:
+        # Fallback to sequential execution if threading unavailable
+        try:
+            sections_raw = _stage4_synthesize_cached(key, _safe_to_dict(plan), dps_index)
+            sections = [
+                ReportSection(title=s["title"], markdown_body=s["markdown_body"])
+                for s in sections_raw
+            ]
+        except Exception:
+            sections = []
+        progress_callback(4, "completed", "Finished writing recommendations")
+
+        try:
+            rec_raw = _stage5_recommend_cached(key, needs_dict, dps_index)
+            rec = Recommendations(
+                funder_candidates=[
+                    fc
+                    for fc in (
+                        _coerce_funder_candidate(it)
+                        for it in (rec_raw.get("funder_candidates") or [])
+                    )
+                    if fc is not None
+                ],
+                response_tuning=[
+                    it if isinstance(it, TuningTip) else TuningTip(**cast(dict[str, Any], it))
+                    for it in (rec_raw.get("response_tuning") or [])
+                ],
+                search_queries=[
+                    sq
+                    for it in (rec_raw.get("search_queries") or [])
+                    for sq in (_coerce_search_query(it),)
+                    if sq is not None
+                ],
             )
-            if fc is not None
-        ],
-        response_tuning=[
-            it if isinstance(it, TuningTip) else TuningTip(**cast(dict[str, Any], it))
-            for it in (rec_raw.get("response_tuning") or [])
-        ],
-        search_queries=[
-            sq
-            for it in (rec_raw.get("search_queries") or [])
-            for sq in (_coerce_search_query(it),)
-            if sq is not None
-        ],
-    )
-    progress_callback(5, "completed", "Finished identifying funders")
+        except Exception:
+            rec = Recommendations()
+        progress_callback(5, "completed", "Finished identifying funders")
 
     # Post-process: drop placeholder/zero-score candidates before fallback
     try:

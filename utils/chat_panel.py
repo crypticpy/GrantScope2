@@ -4,7 +4,7 @@ import streamlit as st
 
 from loaders.llama_index_setup import resolve_chart_context, stream_query, tool_query
 from utils.app_state import get_selected_chart
-from utils.utils import is_feature_enabled
+from utils.utils import is_feature_enabled, sanitize_markdown
 
 # Expose a module-level alias for tests to patch: utils.chat_panel.get_session_profile
 # The actual retrieval remains deferred inside functions for runtime safety.
@@ -390,7 +390,7 @@ def chat_panel(df, pre_prompt: str, state_key: str, title: str = "AI Assistant")
                 # Replay history so new messages appear ABOVE the input
                 for role, content in st.session_state[history_key]:
                     with st.chat_message(role):
-                        st.markdown(content)
+                        st.markdown(sanitize_markdown(content))
 
                 st.markdown("</div>", unsafe_allow_html=True)
 

@@ -1,0 +1,7 @@
+# Streamlit configuration to avoid PyTorch torch.classes getattr issue during watcher scanning
+[server]
+fileWatcherType = "none"
+runOnSave = false
+
+[client]
+toolbarMode = "minimal"

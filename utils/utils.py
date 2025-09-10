@@ -69,6 +69,49 @@ def compact_sample(df: pd.DataFrame, max_rows: int = 50) -> str:
         return ""
 
 
+def sanitize_markdown(text: str) -> str:
+    """
+    Escape characters that can trigger unintended Markdown/LaTeX rendering in Streamlit.
+
+    Currently:
+    - Escapes unescaped '$' and '$$' to prevent MathJax from activating.
+    - Preserves content inside backtick code spans and fenced code blocks.
+
+    Notes:
+    - We deliberately do not escape other Markdown syntax here to keep intended styling.
+    - This function is safe to call multiple times (idempotent for '$' escaping).
+    """
+    try:
+        s = "" if text is None else str(text)
+    except Exception:
+        s = str(text)
+
+    # Local import to avoid adding a global dependency at module import time
+    import re
+
+    # Detect inline code (`...`) and fenced code blocks (```...```)
+    code_pattern = re.compile(r"(```.*?```|`[^`]*`)", re.DOTALL)
+
+    def _escape_noncode(segment: str) -> str:
+        # Escape $$ first, then single $ (only those not already escaped)
+        segment = re.sub(r"(?<!\\)\$\$", r"\\$\\$", segment)
+        segment = re.sub(r"(?<!\\)\$", r"\\$", segment)
+        return segment
+
+    parts: list[str] = []
+    last_idx = 0
+    for m in code_pattern.finditer(s):
+        # Escape the text before the code block/span
+        parts.append(_escape_noncode(s[last_idx : m.start()]))
+        # Keep the code block/span unchanged
+        parts.append(m.group(0))
+        last_idx = m.end()
+    # Remainder after the last match
+    parts.append(_escape_noncode(s[last_idx:]))
+
+    return "".join(parts)
+
+
 @st.cache_data(show_spinner=False)
 def _build_prompt_cached(
     selected_chart: str,

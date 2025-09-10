@@ -23,24 +23,76 @@ def _tokens_lower(tokens: list[str]) -> list[str]:
     out: list[str] = []
     for t in tokens or []:
         try:
-            s = str(t).strip().lower()
-            if s:
+            if s := str(t).strip().lower():
                 out.append(s)
         except Exception:
             continue
     return out
 
 
+def _sanitize_tokens_for_contains(tokens: list[Any]) -> list[str]:
+    """Minimal token normalization for regex search within _contains_any:
+    - Cast each token to str and strip surrounding whitespace
+    - Drop only empty strings (do NOT drop falsy values like 0 or False)
+    - Deduplicate while preserving input order
+    """
+    cleaned: list[str] = []
+    seen: set[str] = set()
+    for t in tokens or []:
+        try:
+            s = str(t).strip()
+        except Exception:
+            # If casting to string fails for a token, skip it
+            continue
+        if s and s not in seen:
+            cleaned.append(s)
+            seen.add(s)
+    return cleaned
+
+
 def _contains_any(series: pd.Series, tokens: list[str]) -> pd.Series:
-    """Case-insensitive string contains for any of the tokens; safe on missing values."""
+    """Case-insensitive substring match for any token; safe on missing values.
+
+    Implementation notes:
+    - Uses a non-capturing regex group (?:...) for slight performance gain.
+    - Chunks very large token lists to avoid overly long regex patterns.
+    - Relies on case-insensitive regex (case=False) to avoid copying/allocating
+      a lowercased Series.
+    - On any unexpected error, returns an all-True mask (graceful degradation).
+    """
     if not tokens:
         return pd.Series([True] * len(series), index=series.index)
     try:
-        pattern = "|".join(re.escape(t) for t in tokens if t)
-        if not pattern:
+        # Normalize input tokens minimally and drop empties
+        cleaned = _sanitize_tokens_for_contains(tokens)
+        if not cleaned:
             return pd.Series([True] * len(series), index=series.index)
-        s = series.astype(str).str.lower()
-        return s.str.contains(pattern, na=False)
+
+        # Prepare the string Series once (avoid repeated astype/allocations)
+        s = series.astype(str)
+
+        # Build regex patterns with escaping. Chunk if token list is large to prevent
+        # pathological regex sizes.
+        CHUNK_SIZE = 100
+        if len(cleaned) <= CHUNK_SIZE:
+            pattern = "|".join(re.escape(t) for t in cleaned)
+            if not pattern:
+                return pd.Series([True] * len(series), index=series.index)
+            pattern = f"(?:{pattern})"
+            return s.str.contains(pattern, na=False, regex=True, case=False)
+
+        # Chunked evaluation; combine with bitwise OR
+        result_mask = pd.Series(False, index=series.index)
+        for i in range(0, len(cleaned), CHUNK_SIZE):
+            chunk = cleaned[i : i + CHUNK_SIZE]
+            chunk_pattern = "|".join(re.escape(t) for t in chunk)
+            if not chunk_pattern:
+                continue
+            chunk_pattern = f"(?:{chunk_pattern})"
+            result_mask = result_mask | s.str.contains(
+                chunk_pattern, na=False, regex=True, case=False
+            )
+        return result_mask
     except Exception:
         # In case of unexpected dtype/pathological data, disable filter (do no harm)
         return pd.Series([True] * len(series), index=series.index)
@@ -49,46 +101,66 @@ def _contains_any(series: pd.Series, tokens: list[str]) -> pd.Series:
 def _expand_token_variants(token: str, kind: str = "generic") -> list[str]:
     """
     Expand a normalized token into a list of likely textual variants to improve matching.
-    - Replaces underscores with spaces/hyphens and vice versa.
-    - Adds common synonyms for select domain terms.
-    - For geographies, map common codes to full names (e.g., 'tx' -> 'texas',
-      'us' -> 'united states').
+    - Generate separator variants across underscores, hyphens, and spaces.
+    - Add lightweight domain synonyms for select terms.
+    - For geographies, map common codes to full names (e.g., 'tx' -> 'texas', 'us' -> 'united states').
+    Notes:
+    - All variants are lowercased; matching is handled case-insensitively upstream.
     """
     t = (token or "").strip().lower()
     if not t:
         return []
-    variants = {t}
-    # Underscore / hyphen / space variants
-    variants.add(t.replace("_", " "))
-    variants.add(t.replace("_", "-"))
-    variants.add(t.replace("-", " "))
-    variants.add(t.replace("-", "_"))
 
-    # Domain-specific lightweight synonyms
-    syns: list[str] = []
-    if kind in ("population", "subject", "generic"):
-        if t in ("low_income", "low income", "low-income"):
-            syns += ["low income", "low-income", "low income people", "low-income people"]
-        if t in ("after_school", "after school", "after-school"):
-            syns += ["after school", "after-school", "out-of-school", "out of school"]
-        if t in ("youth", "children and youth"):
-            syns += ["youth", "children and youth", "young people"]
-        if t in ("students",):
-            syns += ["students", "student"]
-        if t in ("stem",):
-            syns += ["stem", "science technology engineering mathematics"]
-        if t in ("technology",):
-            syns += ["technology", "information and communications", "it"]
-        if t in ("education", "youth_education", "youth education"):
-            syns += [
+    variants: set[str] = set()
+
+    # Separator variants: split into chunks and re-join using _, -, and space
+    parts = [p for p in re.split(r"[_\-\s]+", t) if p]
+    if parts:
+        for sep in ("_", "-", " "):
+            variants.add(sep.join(parts))
+    # Always include the original normalized token too
+    variants.add(t)
+
+    # Domain-specific lightweight synonyms (kept minimal and fast)
+    syns: set[str] = set()
+    if kind in {"population", "subject", "generic"}:
+        syn_index: dict[str, list[str]] = {
+            "low_income": ["low income", "low-income", "low income people", "low-income people"],
+            "low income": ["low income", "low-income", "low income people", "low-income people"],
+            "low-income": ["low income", "low-income", "low income people", "low-income people"],
+            "after_school": ["after school", "after-school", "out-of-school", "out of school"],
+            "after school": ["after school", "after-school", "out-of-school", "out of school"],
+            "after-school": ["after school", "after-school", "out-of-school", "out of school"],
+            "youth": ["youth", "children and youth", "young people"],
+            "children and youth": ["youth", "children and youth", "young people"],
+            "students": ["students", "student"],
+            "stem": ["stem", "science technology engineering mathematics"],
+            "technology": ["technology", "information and communications", "it"],
+            "education": [
                 "education",
                 "education services",
                 "elementary and secondary education",
                 "youth development",
-            ]
+            ],
+            "youth_education": [
+                "education",
+                "education services",
+                "elementary and secondary education",
+                "youth development",
+            ],
+            "youth education": [
+                "education",
+                "education services",
+                "elementary and secondary education",
+                "youth development",
+            ],
+        }
+        if t in syn_index:
+            syns.update(syn_index[t])
+
     if kind == "geography":
         # Enhanced US mapping with cities and regions
-        geo_map = {
+        geo_map: dict[str, list[str]] = {
             "us": ["united states", "u.s.", "usa"],
             "tx": ["texas", "austin", "dallas", "houston", "san antonio", "fort worth"],
             "ca": [
@@ -117,25 +189,27 @@ def _expand_token_variants(token: str, kind: str = "generic") -> list[str]:
             "new york city": ["new york", "ny"],
         }
         if t in geo_map:
-            syns += geo_map[t]
-        # Also add capitalized versions (city/state names often are capitalized in text)
-        syns += [s.title() for s in syns if s]
+            syns.update(geo_map[t])
 
-        # Add common geographic descriptors
-        if "texas" in t or "tx" in t:
-            syns += ["austin", "texas", "tx"]
-        elif "california" in t or "ca" in t:
-            syns += ["california", "ca"]
-        elif "austin" in t.lower():
-            syns += ["texas", "tx", "austin"]
-        elif "los angeles" in t.lower() or "san francisco" in t.lower():
-            syns += ["california", "ca"]
+        # Additional geographic descriptors (t already lowercased)
+        if "texas" in t or t == "tx":
+            syns.update(["austin", "texas", "tx"])
+        elif (
+            "california" in t
+            or t == "ca"
+            or "austin" not in t
+            and ("los angeles" in t or "san francisco" in t)
+        ):
+            syns.update(["california", "ca"])
+        elif "austin" in t:
+            syns.update(["texas", "tx", "austin"])
+    # Merge synonyms into variants
+    variants.update(s.strip().lower() for s in syns if s)
 
-    for s in syns:
-        if s:
-            variants.add(s.lower())
-
-    return list({v for v in variants if v})
+    # Remove empties and return deterministic ordering for stability
+    result = [v for v in variants if v]
+    result.sort()
+    return result
 
 
 def _expand_terms(terms: list[str], kind: str) -> list[str]:

@@ -5,7 +5,7 @@ from config import is_enabled
 from utils.ai_explainer import render_ai_explainer
 from utils.app_state import set_selected_chart
 from utils.chat_panel import chat_panel
-from utils.utils import download_csv, generate_page_prompt
+from utils.utils import download_csv, generate_page_prompt, sanitize_markdown
 
 
 def general_analysis_relationships(df, _grouped_df, selected_chart, _selected_role, _ai_enabled):
@@ -300,7 +300,7 @@ def general_analysis_relationships(df, _grouped_df, selected_chart, _selected_ro
             st.subheader("💡 Smart Recommendations")
             for i, rec in enumerate(recs[:3]):
                 with st.expander(f"💡 {rec.title}", expanded=i == 0):
-                    st.write(rec.reason)
+                    st.markdown(sanitize_markdown(rec.reason))
     except Exception:
         pass
 

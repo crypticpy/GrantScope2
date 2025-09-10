@@ -70,6 +70,15 @@ def _figures_default(df: pd.DataFrame, interview, needs) -> list[FigureArtifact]
 
         interview_dict = _safe_to_dict(interview)
 
+        # Prepare concurrent interpretation scheduling to reduce latency
+        scheduled: list[tuple[str, Any, ChartSummary | None, object | None]] = []
+        try:
+            from concurrent.futures import ThreadPoolExecutor  # type: ignore
+
+            executor = ThreadPoolExecutor(max_workers=3)
+        except Exception:
+            executor = None  # type: ignore
+
         def _chart_cache_key(kind: str, summary_dict: dict[str, Any]) -> str:
             try:
                 base = cache_key_for(interview, df)
@@ -106,14 +115,21 @@ def _figures_default(df: pd.DataFrame, interview, needs) -> list[FigureArtifact]
                     pass
                 summary = ChartSummary(label="Top Funders", highlights=highlights, stats=stats)
                 sdict = _safe_to_dict(summary)
-                interp = _interpret_chart_cached(
-                    _chart_cache_key("top_funders", sdict), sdict, interview_dict
-                )
-                out.append(
-                    _wrap_plot_as_figure(
-                        "Top Funders", plot_obj, summary=summary, interpretation_text=interp
+                # Schedule interpretation in background
+                try:
+                    fut = (
+                        executor.submit(  # type: ignore[union-attr]
+                            _interpret_chart_cached,
+                            _chart_cache_key("top_funders", sdict),
+                            sdict,
+                            interview_dict,
+                        )
+                        if executor is not None
+                        else None
                     )
-                )
+                except Exception:
+                    fut = None
+                scheduled.append(("Top Funders", plot_obj, summary, fut))
 
         # Distribution of amounts
         if "amount_usd" in df.columns:
@@ -156,17 +172,21 @@ def _figures_default(df: pd.DataFrame, interview, needs) -> list[FigureArtifact]
                     label="Amount Distribution", highlights=highlights2, stats=stats2
                 )
                 sdict2 = _safe_to_dict(summary2)
-                interp2 = _interpret_chart_cached(
-                    _chart_cache_key("amount_distribution", sdict2), sdict2, interview_dict
-                )
-                out.append(
-                    _wrap_plot_as_figure(
-                        "Amount Distribution",
-                        plot_obj2,
-                        summary=summary2,
-                        interpretation_text=interp2,
+                # Schedule interpretation in background
+                try:
+                    fut2 = (
+                        executor.submit(  # type: ignore[union-attr]
+                            _interpret_chart_cached,
+                            _chart_cache_key("amount_distribution", sdict2),
+                            sdict2,
+                            interview_dict,
+                        )
+                        if executor is not None
+                        else None
                     )
-                )
+                except Exception:
+                    fut2 = None
+                scheduled.append(("Amount Distribution", plot_obj2, summary2, fut2))
 
         # Time trend by year
         if "year_issued" in df.columns and "amount_usd" in df.columns:
@@ -215,14 +235,55 @@ def _figures_default(df: pd.DataFrame, interview, needs) -> list[FigureArtifact]
                     pass
                 summary3 = ChartSummary(label="Time Trend", highlights=highlights3, stats=stats3)
                 sdict3 = _safe_to_dict(summary3)
-                interp3 = _interpret_chart_cached(
-                    _chart_cache_key("time_trend", sdict3), sdict3, interview_dict
-                )
-                out.append(
-                    _wrap_plot_as_figure(
-                        "Time Trend", plot_obj3, summary=summary3, interpretation_text=interp3
+                # Schedule interpretation in background
+                try:
+                    fut3 = (
+                        executor.submit(  # type: ignore[union-attr]
+                            _interpret_chart_cached,
+                            _chart_cache_key("time_trend", sdict3),
+                            sdict3,
+                            interview_dict,
+                        )
+                        if executor is not None
+                        else None
                     )
-                )
+                except Exception:
+                    fut3 = None
+                scheduled.append(("Time Trend", plot_obj3, summary3, fut3))
     except Exception:
+        # If scheduling/plotting failed early, attempt to flush any scheduled figures without interpretations
+        try:
+            for label, plot_obj, summary, _ in scheduled:
+                out.append(_wrap_plot_as_figure(label, plot_obj, summary=summary))
+        except Exception:
+            pass
         return out
+
+    # Finalize scheduled interpretations and append figures
+    try:
+        if executor is not None:
+            try:
+                executor.shutdown(wait=True)  # type: ignore[union-attr]
+            except Exception:
+                pass
+        for label, plot_obj, summary, fut in scheduled:
+            interp_txt = None
+            if fut is not None:
+                try:
+                    interp_txt = fut.result(timeout=60)  # type: ignore[attr-defined]
+                except Exception:
+                    interp_txt = None
+            out.append(
+                _wrap_plot_as_figure(
+                    label, plot_obj, summary=summary, interpretation_text=interp_txt
+                )
+            )
+    except Exception:
+        # As a fallback, append without interpretations
+        try:
+            for label, plot_obj, summary, _ in scheduled:
+                out.append(_wrap_plot_as_figure(label, plot_obj, summary=summary))
+        except Exception:
+            pass
+
     return out

@@ -1,209 +1,218 @@
-"""
-Figure builders for the Advisor pipeline.
-
-These functions return Plotly figure objects. The pipeline will wrap them
-into FigureArtifact with PNG/HTML for export as needed.
-"""
-
 from __future__ import annotations
 
 from typing import Any
 
-# Use centralized normalization for consistent filtering between metrics and figures
-try:
-    from GrantScope.advisor.normalization import _apply_needs_filters  # type: ignore
-except Exception:  # pragma: no cover
-    from advisor.normalization import _apply_needs_filters  # type: ignore
-
 import pandas as pd
-
-# Plotly import with defensive fallback to avoid hard failures during tests
-px: Any  # Help static analyzers; will be set by import below
-
-try:
-    import plotly.express as px  # type: ignore
-except Exception:  # pragma: no cover
-    px = None  # type: ignore
-
-# Streamlit (optional) for caching deterministic prep steps
-try:
-    import streamlit as st  # type: ignore
-except Exception:  # pragma: no cover
-
-    class _NoStreamlit:  # type: ignore
-        def cache_data(self, show_spinner: bool = False):
-            def decorator(fn):
-                return fn
-
-            return decorator
-
-    st = _NoStreamlit()  # type: ignore
-
-# Apply a professional Plotly template and color palette globally (if Plotly is available)
-try:
-    if px is not None:
-        px.defaults.template = "seaborn"
-        # Use a qualitative palette with good print/export legibility
-        from plotly.colors import qualitative as _qual  # type: ignore
-
-        px.defaults.color_discrete_sequence = _qual.Set2
-except Exception:
-    # Ignore palette errors; figures will fall back to Plotly defaults
-    pass
+import plotly.express as px
 
 
-def _ensure_plotly() -> None:
-    if px is None:  # pragma: no cover
-        raise RuntimeError("plotly is not available. Install plotly to render Advisor figures.")
-
-
-def _has_field(df: pd.DataFrame, col: str, min_nonnull_ratio: float = 0.01) -> bool:
-    """Return True if a column exists and has at least a minimal fraction of non-null values."""
+def _to_list_lower(xs: Any) -> list[str]:
     try:
-        return (col in df.columns) and (df[col].notna().mean() >= min_nonnull_ratio)
+        if xs is None:
+            return []
+        if isinstance(xs, (list, tuple, set)):
+            return [str(x).strip() for x in xs if str(x).strip()]
+        # allow single string
+        s = str(xs or "").strip()
+        return [s] if s else []
     except Exception:
-        return col in df.columns
+        return []
 
 
-def _safe_copy_df(df: pd.DataFrame) -> pd.DataFrame:
+def _needs_dict(needs: Any) -> dict[str, Any]:
+    # Accept pydantic model, dataclass, dict
     try:
-        return df.copy()
-    except Exception:
-        return df
-
-
-def _filter_by_needs(df: pd.DataFrame, needs) -> pd.DataFrame:
-    """Apply the same normalization filter used by metrics to keep figures consistent.
-
-    This delegates to advisor.normalization._apply_needs_filters, which expands tokens
-    (e.g., tx->Texas/Austin; education->Education services) and gracefully degrades if
-    filters would eliminate all rows.
-    """
-    try:
-        filtered, _used = _apply_needs_filters(df, needs)
-        return filtered
-    except Exception:
-        return df
-
-
-@st.cache_data(show_spinner=False)
-def _prep_top_funders(df: pd.DataFrame, needs) -> pd.DataFrame:
-    """Deterministic prep: aggregate top funders by amount."""
-    data = _filter_by_needs(df, needs)
-    if "funder_name" not in data.columns or "amount_usd" not in data.columns:
-        return pd.DataFrame({"funder_name": ["N/A"], "amount_usd": [0.0]})
-    try:
-        grp = (
-            data.groupby("funder_name", dropna=False)["amount_usd"]
-            .sum()
-            .sort_values(ascending=False)
-            .head(10)
-            .reset_index()
-        )
-        return grp
-    except Exception:
-        return pd.DataFrame({"funder_name": ["N/A"], "amount_usd": [0.0]})
-
-
-@st.cache_data(show_spinner=False)
-def _prep_distribution(df: pd.DataFrame, needs) -> pd.DataFrame:
-    """Deterministic prep: ensure a clean numeric series for amount_usd."""
-    data = _filter_by_needs(df, needs)
-    if "amount_usd" not in data.columns:
-        return pd.DataFrame({"amount_usd": [0.0]})
-    try:
-        s = pd.to_numeric(data["amount_usd"], errors="coerce").dropna()
-        return pd.DataFrame({"amount_usd": s})
-    except Exception:
-        return pd.DataFrame({"amount_usd": [0.0]})
-
-
-@st.cache_data(show_spinner=False)
-def _prep_time_trend(df: pd.DataFrame, needs) -> pd.DataFrame:
-    """Deterministic prep: sum of amounts by year_issued."""
-    data = _filter_by_needs(df, needs)
-    if "year_issued" not in data.columns or "amount_usd" not in data.columns:
-        return pd.DataFrame({"year_issued": [], "amount_usd": []})
-    try:
-        yrs = pd.to_numeric(data["year_issued"], errors="coerce")
-        tmp = data.copy()
-        tmp["__year__"] = yrs
-        agg = (
-            tmp.groupby("__year__", dropna=False)["amount_usd"]
-            .sum()
-            .reset_index()
-            .rename(columns={"__year__": "year_issued"})
-        )
-        agg = agg.dropna(subset=["year_issued"])
-        try:
-            agg["year_issued"] = agg["year_issued"].astype(int)
-        except Exception:
-            pass
-        return agg
-    except Exception:
-        return pd.DataFrame({"year_issued": ["N/A"], "amount_usd": [0.0]})
-
-
-def figure_top_funders_bar(df: pd.DataFrame, needs) -> Any:
-    """Bar chart: Top funders by total amount."""
-    _ensure_plotly()
-    data = _prep_top_funders(df, needs)
-    fig = px.bar(
-        data,
-        x="amount_usd",
-        y="funder_name",
-        orientation="h",
-        title="Top Funders by Total Amount (Top 10)",
-        labels={"amount_usd": "Total Amount (USD)", "funder_name": "Funder"},
-    )
-    fig.update_layout(
-        yaxis={"categoryorder": "total ascending"},
-        margin=dict(l=80, r=20, t=60, b=40),
-        legend_title_text="",
-    )
-    # Currency formatting for readability
-    try:
-        fig.update_xaxes(tickprefix="$", separatethousands=True)
+        if isinstance(needs, dict):
+            return needs
+        if hasattr(needs, "model_dump"):
+            return needs.model_dump()
+        if hasattr(needs, "dict"):
+            return needs.dict()  # type: ignore[attr-defined]
+        if hasattr(needs, "__dict__"):
+            return dict(needs.__dict__)
     except Exception:
         pass
+    return {}
+
+
+def _apply_needs_soft(df: pd.DataFrame, needs: Any) -> pd.DataFrame:
+    """
+    Soft-filter df using whatever fields are available in needs.
+    Does not fail if fields/columns are missing; returns df unchanged when filters can't be applied.
+    """
+    try:
+        nd = _needs_dict(needs)
+        subs = _to_list_lower(nd.get("subjects") or nd.get("keywords"))
+        pops = _to_list_lower(nd.get("populations"))
+        geos = _to_list_lower(nd.get("geographies") or nd.get("geography"))
+
+        out = df
+        # Subject filter (columns commonly *_tran)
+        if subs and any(
+            col in out.columns for col in ("grant_subject_tran", "subject", "subjects")
+        ):
+            for col in ("grant_subject_tran", "subject", "subjects"):
+                if col in out.columns:
+                    out = out[out[col].astype(str).str.lower().isin(set(subs)) | (out[col].isna())]
+                    break
+
+        # Population filter
+        if pops and any(
+            col in out.columns for col in ("grant_population_tran", "population", "populations")
+        ):
+            for col in ("grant_population_tran", "population", "populations"):
+                if col in out.columns:
+                    out = out[out[col].astype(str).str.lower().isin(set(pops)) | (out[col].isna())]
+                    break
+
+        # Geography filter (handle state codes, city names, regions)
+        if geos and any(
+            col in out.columns for col in ("grant_geo_area_tran", "geography", "region", "state")
+        ):
+            for col in ("grant_geo_area_tran", "geography", "region", "state"):
+                if col in out.columns:
+                    # Normalize both sides for simple contains/in
+                    ocol = out[col].astype(str).str.lower()
+                    mask = False
+                    for g in geos:
+                        # allow contains for city/region names
+                        mask = mask | ocol.str.contains(str(g).lower(), na=False)
+                    out = out[mask | out[col].isna()]
+                    break
+
+        return out
+    except Exception:
+        return df
+
+
+# --------------------------
+# Top Funders (bar)
+# --------------------------
+def _prep_top_funders(df: pd.DataFrame, needs: Any, n: int = 10) -> pd.DataFrame:
+    df2 = _apply_needs_soft(df, needs)
+    if "funder_name" not in df2.columns or "amount_usd" not in df2.columns:
+        return pd.DataFrame(columns=["funder_name", "amount_usd"])
+    grp = (
+        df2.dropna(subset=["funder_name", "amount_usd"])
+        .groupby("funder_name", as_index=False)["amount_usd"]
+        .sum()
+    )
+    grp = grp.sort_values("amount_usd", ascending=False).head(int(n))
+    return grp
+
+
+def figure_top_funders_bar(df: pd.DataFrame, needs: Any):
+    """
+    Return a Plotly bar chart of top funders by total amount_usd.
+    """
+    data = _prep_top_funders(df, needs, n=10)
+    if data.empty:
+        # Return minimal empty chart to keep downstream consistent
+        return px.bar(
+            pd.DataFrame({"funder_name": [], "amount_usd": []}),
+            x="funder_name",
+            y="amount_usd",
+            title="Top Funders by Total Amount",
+        )
+    fig = px.bar(
+        data,
+        x="funder_name",
+        y="amount_usd",
+        title="Top Funders by Total Amount",
+    )
+    fig.update_layout(
+        xaxis_title="Funder Name",
+        yaxis_title="Total Grant Amount (USD)",
+        margin=dict(l=10, r=10, t=50, b=40),
+    )
     return fig
 
 
-def figure_amount_distribution(df: pd.DataFrame, needs) -> Any:
-    """Histogram of grant amounts with marginal box plot."""
-    _ensure_plotly()
+# --------------------------
+# Amount Distribution (histogram)
+# --------------------------
+def _prep_distribution(df: pd.DataFrame, needs: Any) -> pd.DataFrame:
+    df2 = _apply_needs_soft(df, needs)
+    if "amount_usd" not in df2.columns:
+        return pd.DataFrame(columns=["amount_usd"])
+    out = df2[["amount_usd"]].dropna()
+    return out
+
+
+def figure_amount_distribution(df: pd.DataFrame, needs: Any):
+    """
+    Return a Plotly histogram of amount_usd.
+    """
     data = _prep_distribution(df, needs)
+    if data.empty:
+        return px.histogram(
+            pd.DataFrame({"amount_usd": []}), x="amount_usd", title="Grant Amount Distribution"
+        )
+    # Heuristic for bin count
+    nbins = max(10, min(60, int(len(data) ** 0.5)))
     fig = px.histogram(
         data,
         x="amount_usd",
-        nbins=30,
-        title="Distribution of Grant Amounts",
-        labels={"amount_usd": "Amount (USD)"},
-        marginal="box",
+        nbins=nbins,
+        title="Grant Amount Distribution",
     )
-    fig.update_layout(margin=dict(l=40, r=20, t=60, b=40), bargap=0.05)
-    try:
-        fig.update_xaxes(tickprefix="$", separatethousands=True)
-    except Exception:
-        pass
+    fig.update_layout(
+        xaxis_title="Grant Amount (USD)",
+        yaxis_title="Count",
+        margin=dict(l=10, r=10, t=50, b=40),
+    )
     return fig
 
 
-def figure_time_trend(df: pd.DataFrame, needs) -> Any:
-    """Line chart: Sum of amounts by year_issued."""
-    _ensure_plotly()
+# --------------------------
+# Time Trend (line)
+# --------------------------
+def _prep_time_trend(df: pd.DataFrame, needs: Any) -> pd.DataFrame:
+    df2 = _apply_needs_soft(df, needs)
+    if "year_issued" not in df2.columns or "amount_usd" not in df2.columns:
+        return pd.DataFrame(columns=["year_issued", "amount_usd"])
+    dft = (
+        df2.dropna(subset=["year_issued", "amount_usd"])
+        .groupby("year_issued", as_index=False)["amount_usd"]
+        .sum()
+        .sort_values("year_issued")
+    )
+    return dft
+
+
+def figure_time_trend(df: pd.DataFrame, needs: Any):
+    """
+    Return a Plotly line chart of total amount_usd by year_issued.
+    """
     data = _prep_time_trend(df, needs)
+    if data.empty:
+        return px.line(
+            pd.DataFrame({"year_issued": [], "amount_usd": []}),
+            x="year_issued",
+            y="amount_usd",
+            title="Funding Trends Over Time",
+        )
     fig = px.line(
         data,
         x="year_issued",
         y="amount_usd",
         markers=True,
-        title="Total Amount by Year Issued",
-        labels={"year_issued": "Year", "amount_usd": "Total Amount (USD)"},
+        title="Funding Trends Over Time",
     )
-    fig.update_layout(margin=dict(l=40, r=20, t=60, b=40))
-    try:
-        fig.update_yaxes(tickprefix="$", separatethousands=True)
-    except Exception:
-        pass
+    fig.update_layout(
+        xaxis_title="Year Issued",
+        yaxis_title="Total Amount Awarded (USD)",
+        margin=dict(l=10, r=10, t=50, b=40),
+    )
     return fig
+
+
+# Export helpers used by figures_wrap
+__all__ = [
+    "_prep_top_funders",
+    "figure_top_funders_bar",
+    "_prep_distribution",
+    "figure_amount_distribution",
+    "_prep_time_trend",
+    "figure_time_trend",
+]

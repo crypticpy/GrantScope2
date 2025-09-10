@@ -112,21 +112,23 @@ def _push_progress(report_id: str, message: str) -> None:
             stage_info = get_stage_info(message)
 
         state = _PROGRESS_STATE.get(report_id, {})
-        # Do not override completed/error
+        # Do not override terminal states
         if state.get("status") not in {"completed", "error"}:
             if stage_info:
                 state.update(
                     {
                         "current_stage": stage_info["id"],
-                        "status": state.get("status", "running"),
+                        # Always mark as running when advancing/informing a stage
+                        "status": "running",
                         "message": message,
                         "timestamp": datetime.utcnow().isoformat(),
                     }
                 )
             else:
+                # No stage mapping, still ensure status reflects active work
                 state.update(
                     {
-                        "status": state.get("status", "running"),
+                        "status": "running",
                         "message": message,
                         "timestamp": datetime.utcnow().isoformat(),
                     }

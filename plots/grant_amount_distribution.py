@@ -1,3 +1,5 @@
+import contextlib
+
 import pandas as pd
 import plotly.express as px
 import streamlit as st
@@ -80,15 +82,12 @@ def grant_amount_distribution(df, grouped_df, selected_chart, selected_role, ai_
         "Select USD Clusters", options=cluster_options, default=cluster_options
     )
     # Persist current filter state to session for AI chart-state tool
-    try:
+    with contextlib.suppress(Exception):
         st.session_state["dist_metric"] = metric
         st.session_state["dist_top_n"] = int(top_n)
         st.session_state["dist_log_y"] = bool(log_y)
         st.session_state["dist_sort_dir"] = sort_dir
         st.session_state["dist_selected_clusters"] = list(selected_clusters)
-    except Exception:
-        pass
-
     # Work on a copy to avoid chained assignment issues
     grouped_df = grouped_df.copy()
     grouped_df["amount_usd_cluster"] = grouped_df["amount_usd_cluster"].astype(str)
@@ -100,7 +99,7 @@ def grant_amount_distribution(df, grouped_df, selected_chart, selected_role, ai_
     filtered_df = (
         _filter_clusters(grouped_df, tuple(selected_clusters))
         if selected_clusters
-        else grouped_df.iloc[0:0]
+        else grouped_df.iloc[:0]
     )
 
     if filtered_df.empty:
@@ -128,7 +127,7 @@ def grant_amount_distribution(df, grouped_df, selected_chart, selected_role, ai_
 
     agg, y_label = _aggregate_distribution(filtered_df, metric)
 
-    agg = agg.sort_values("value", ascending=(sort_dir == "Ascending")).head(int(top_n))
+    agg = agg.sort_values("value", ascending=sort_dir == "Ascending").head(int(top_n))
 
     fig = px.bar(
         agg,
@@ -143,7 +142,7 @@ def grant_amount_distribution(df, grouped_df, selected_chart, selected_role, ai_
     st.plotly_chart(fig, use_container_width=True)
 
     # AI Explainer for distribution chart
-    try:
+    with contextlib.suppress(Exception):
         additional_context = "the distribution of grant amounts across USD clusters"
         pre_prompt = generate_page_prompt(
             df,
@@ -162,20 +161,14 @@ def grant_amount_distribution(df, grouped_df, selected_chart, selected_role, ai_
         render_ai_explainer(
             filtered_df, pre_prompt, chart_id="distribution.main", sample_df=filtered_df
         )
-    except Exception:
-        pass
-
     # Smart recommendations panel
-    try:
+    with contextlib.suppress(Exception):
         from utils.recommendations import GrantRecommender
 
         context = {
             "selected_clusters": st.session_state.get("dist_selected_clusters"),
         }
         GrantRecommender.render_panel(filtered_df, context)
-    except Exception:
-        pass
-
     if ai_enabled:
         # Sidebar chat selector (single option on this page)
         st.sidebar.subheader("Chat")
@@ -205,7 +198,7 @@ def grant_amount_distribution(df, grouped_df, selected_chart, selected_role, ai_
             sample_df=filtered_df,
         )
         # Render chat in a right-side column to keep main content centered
-        col_main, col_chat = st.columns([8, 3], gap="large")
+        _, col_chat = st.columns([8, 3], gap="large")
         with col_chat:
             chat_panel(
                 filtered_df,

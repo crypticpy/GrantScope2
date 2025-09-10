@@ -14,6 +14,7 @@ except Exception:
     import config  # type: ignore
 
 from loaders.llama_index_setup import tool_query
+from utils.utils import sanitize_markdown
 
 # Expose a module-level alias for tests to patch: utils.ai_explainer.get_session_profile
 # Actual retrieval remains deferred inside functions for runtime safety.
@@ -91,4 +92,4 @@ def render_ai_explainer(
     with st.expander(title, expanded=False):
         if chart_id:
             st.caption(f"Context: {chart_id}")
-        st.markdown(content)
+        st.markdown(sanitize_markdown(content))
